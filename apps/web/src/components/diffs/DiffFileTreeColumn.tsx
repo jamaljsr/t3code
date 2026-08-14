@@ -1,3 +1,4 @@
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useEffect, useRef, useState } from "react";
 
 import { useResizableWidth } from "~/hooks/useResizableWidth";
@@ -8,13 +9,26 @@ import {
   clampDiffFileTreeMaxWidth,
 } from "../../lib/diffFileFocus";
 import { type TurnDiffFileChange } from "../../types";
+import { DiffCommitList, type DiffCommitListCommit } from "./DiffCommitList";
 import { DiffFileTree } from "./DiffFileTree";
+
+export interface DiffFileTreeCommitListProps {
+  readonly commits: ReadonlyArray<DiffCommitListCommit>;
+  readonly commitsTruncated: boolean;
+  readonly commitsError: boolean;
+  readonly showUncommitted: boolean;
+  readonly workingTreeSelected: boolean;
+  readonly listIdentity: string;
+  readonly timestampFormat: TimestampFormat;
+  readonly onSelectUncommitted: () => void;
+}
 
 interface DiffFileTreeColumnProps {
   readonly files: ReadonlyArray<TurnDiffFileChange>;
   readonly selectedPath: string | null;
   readonly resolvedTheme: "light" | "dark";
   readonly onSelectFile: (path: string) => void;
+  readonly commitList?: DiffFileTreeCommitListProps | null;
 }
 
 export function DiffFileTreeColumn({
@@ -22,6 +36,7 @@ export function DiffFileTreeColumn({
   selectedPath,
   resolvedTheme,
   onSelectFile,
+  commitList = null,
 }: DiffFileTreeColumnProps) {
   const columnRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
@@ -59,6 +74,11 @@ export function DiffFileTreeColumn({
           onSelectFile={onSelectFile}
         />
       </div>
+      {commitList ? (
+        <div className="max-h-[40%] min-h-0 shrink-0 overflow-y-auto border-t border-border py-1">
+          <DiffCommitList {...commitList} />
+        </div>
+      ) : null}
       <div
         role="separator"
         aria-orientation="vertical"
