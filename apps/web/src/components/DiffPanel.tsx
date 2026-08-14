@@ -42,9 +42,9 @@ import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollaps
 import {
   canExpandUnchanged,
   collapseAllExcept,
-  createFocusedFileContentsLoader,
   didRevealRequestChange,
   firstHunkScrollTarget,
+  revealFocusedDiffAfterHydration,
   shouldExpandUnchanged,
   toTurnDiffTreeFiles,
 } from "../lib/diffFileFocus";
@@ -462,11 +462,6 @@ export default function DiffPanel({
     collapsedFileKeys: collapsedDiffFileKeys,
     fileKeys: diffFileKeys,
   });
-  const focusedLoadDiffFiles = useMemo(
-    () => createFocusedFileContentsLoader(loadDiffFiles, focusedFile?.fileDiff ?? null),
-    [focusedFile?.fileDiff, loadDiffFiles],
-  );
-  const codeViewLoadDiffFiles = expandUnchanged ? focusedLoadDiffFiles : loadDiffFiles;
   const treeFocusEffectStateRef = useRef({
     expandUnchanged,
     focusedFile,
@@ -511,28 +506,20 @@ export default function DiffPanel({
     );
     previousSelectedFileRevealRequestIdRef.current = selectedFileRevealRequestId;
     const {
-      expandUnchanged: shouldHydrate,
+      expandUnchanged: shouldWaitForPierreHydration,
       focusedFile: currentFocusedFile,
       loadDiffFiles: currentLoadDiffFiles,
     } = treeFocusEffectStateRef.current;
     if (revealRequestChanged || !treeFocus || !currentFocusedFile) return;
     const target = firstHunkScrollTarget(currentFocusedFile.fileDiff, currentFocusedFile.fileKey);
-    const scroll = () => codeViewRef.current?.scrollTo(target);
-
-    if (!shouldHydrate || !currentLoadDiffFiles || !currentFocusedFile.fileDiff.isPartial) {
-      scroll();
-      return;
-    }
-
+    const needsHydration = Boolean(shouldWaitForPierreHydration && currentLoadDiffFiles);
     let cancelled = false;
-    void currentLoadDiffFiles(currentFocusedFile.fileDiff)
-      .then(() => {
-        if (!cancelled) scroll();
-      })
-      .catch(() => {
-        // Hydration failed: keep hunks, still jump. No toast.
-        if (!cancelled) scroll();
-      });
+    void revealFocusedDiffAfterHydration({
+      fileDiff: currentFocusedFile.fileDiff,
+      needsHydration,
+      isCancelled: () => cancelled,
+      scroll: () => codeViewRef.current?.scrollTo(target),
+    });
     return () => {
       cancelled = true;
     };
@@ -1080,7 +1067,7 @@ export default function DiffPanel({
                       theme: resolveDiffThemeName(resolvedTheme),
                       themeType: resolvedTheme as DiffThemeType,
                       stickyHeaders: true,
-                      ...(codeViewLoadDiffFiles ? { loadDiffFiles: codeViewLoadDiffFiles } : {}),
+                      ...(loadDiffFiles ? { loadDiffFiles } : {}),
                       expandUnchanged,
                     }}
                   />

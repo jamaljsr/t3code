@@ -7,11 +7,12 @@ import {
   canExpandUnchanged,
   clampDiffFileTreeMaxWidth,
   collapseAllExcept,
-  createFocusedFileContentsLoader,
   didRevealRequestChange,
   firstHunkScrollTarget,
+  revealFocusedDiffAfterHydration,
   shouldExpandUnchanged,
   toTurnDiffTreeFiles,
+  waitForFileDiffHydration,
 } from "./diffFileFocus";
 
 function fileWithHunks(
@@ -22,7 +23,12 @@ function fileWithHunks(
     deletionLines: number;
   }>,
 ): FileDiffMetadata {
-  return { name: "src/app.ts", type: "change", hunks } as unknown as FileDiffMetadata;
+  return {
+    name: "src/app.ts",
+    type: "change",
+    hunks,
+    isPartial: true,
+  } as unknown as FileDiffMetadata;
 }
 
 describe("collapseAllExcept", () => {
@@ -149,43 +155,139 @@ describe("shouldExpandUnchanged", () => {
   });
 });
 
-describe("createFocusedFileContentsLoader", () => {
-  it("delegates focused hydration and leaves sibling hydration pending", async () => {
-    const focusedFile = fileWithHunks([]);
-    const siblingFile = fileWithHunks([]);
-    const loadedFiles = {
-      oldFile: { name: "src/app.ts", contents: "before\n" },
-      newFile: { name: "src/app.ts", contents: "after\n" },
-    };
-    const calls: FileDiffMetadata[] = [];
-    const loader = createFocusedFileContentsLoader(async (fileDiff) => {
-      calls.push(fileDiff);
-      return loadedFiles;
-    }, focusedFile);
+describe("waitForFileDiffHydration", () => {
+  it("resolves immediately when expandUnchanged is off", async () => {
+    const fileDiff = fileWithHunks([]);
+    const scheduled: Array<() => void> = [];
 
-    await expect(loader?.(focusedFile)).resolves.toBe(loadedFiles);
-    let siblingStatus = "pending";
-    void loader?.(siblingFile).then(
-      () => {
-        siblingStatus = "resolved";
-      },
-      () => {
-        siblingStatus = "rejected";
-      },
-    );
-    await Promise.resolve();
-    expect(siblingStatus).toBe("pending");
-    expect(calls).toEqual([focusedFile]);
-  });
-
-  it("is absent without both a loader and focused file", () => {
-    const loader = async () => ({
-      oldFile: { name: "src/app.ts", contents: "before\n" },
-      newFile: { name: "src/app.ts", contents: "after\n" },
+    await waitForFileDiffHydration(fileDiff, {
+      shouldHydrate: false,
+      schedule: (callback) => scheduled.push(callback),
     });
 
-    expect(createFocusedFileContentsLoader(undefined, fileWithHunks([]))).toBeUndefined();
-    expect(createFocusedFileContentsLoader(loader, null)).toBeUndefined();
+    expect(scheduled).toEqual([]);
+  });
+
+  it("resolves immediately when the file is already hydrated", async () => {
+    const fileDiff = fileWithHunks([]);
+    fileDiff.isPartial = false;
+    const scheduled: Array<() => void> = [];
+
+    await waitForFileDiffHydration(fileDiff, {
+      shouldHydrate: true,
+      schedule: (callback) => scheduled.push(callback),
+    });
+
+    expect(scheduled).toEqual([]);
+  });
+
+  it("waits until Pierre marks the file hydrated", async () => {
+    const fileDiff = fileWithHunks([]);
+    const scheduled: Array<() => void> = [];
+    const pending = waitForFileDiffHydration(fileDiff, {
+      shouldHydrate: true,
+      schedule: (callback) => scheduled.push(callback),
+    });
+
+    expect(scheduled).toHaveLength(1);
+    fileDiff.isPartial = false;
+    scheduled[0]?.();
+    await pending;
+  });
+
+  it("gives up after the timeout so a stuck patch still scrolls", async () => {
+    const fileDiff = fileWithHunks([]);
+    let now = 0;
+    const scheduled: Array<() => void> = [];
+    const pending = waitForFileDiffHydration(fileDiff, {
+      shouldHydrate: true,
+      schedule: (callback) => scheduled.push(callback),
+      now: () => now,
+      timeoutMs: 20,
+    });
+
+    now = 20;
+    scheduled[0]?.();
+    await pending;
+  });
+});
+
+describe("revealFocusedDiffAfterHydration", () => {
+  it("scrolls immediately when the file is already hydrated", async () => {
+    const fileDiff = fileWithHunks([]);
+    fileDiff.isPartial = false;
+    const scrolls: number[] = [];
+    const layouts: number[] = [];
+
+    await revealFocusedDiffAfterHydration({
+      fileDiff,
+      needsHydration: false,
+      isCancelled: () => false,
+      scroll: () => scrolls.push(scrolls.length),
+      afterLayout: async () => {
+        layouts.push(layouts.length);
+      },
+    });
+
+    expect(scrolls).toEqual([0]);
+    expect(layouts).toEqual([]);
+  });
+
+  it("waits for layout after Pierre hydrates before the first scroll", async () => {
+    const fileDiff = fileWithHunks([]);
+    const scheduled: Array<() => void> = [];
+    const events: string[] = [];
+    const pending = revealFocusedDiffAfterHydration({
+      fileDiff,
+      needsHydration: true,
+      isCancelled: () => false,
+      scroll: () => events.push("scroll"),
+      wait: (diff, options) =>
+        waitForFileDiffHydration(diff, {
+          ...options,
+          schedule: (callback) => scheduled.push(callback),
+        }),
+      afterLayout: async () => {
+        events.push("layout");
+      },
+    });
+
+    expect(events).toEqual([]);
+    fileDiff.isPartial = false;
+    scheduled[0]?.();
+    await pending;
+    expect(events).toEqual(["layout", "scroll"]);
+  });
+
+  it("scrolls again after a late hydration that missed the first wait", async () => {
+    const fileDiff = fileWithHunks([]);
+    const events: string[] = [];
+    const waitResolvers: Array<() => void> = [];
+    const pending = revealFocusedDiffAfterHydration({
+      fileDiff,
+      needsHydration: true,
+      isCancelled: () => false,
+      scroll: () => events.push("scroll"),
+      wait: () =>
+        new Promise<void>((resolve) => {
+          waitResolvers.push(resolve);
+        }),
+      afterLayout: async () => {
+        events.push("layout");
+      },
+    });
+
+    expect(waitResolvers).toHaveLength(1);
+    waitResolvers[0]?.();
+    for (let i = 0; i < 20 && waitResolvers.length < 2; i++) {
+      await Promise.resolve();
+    }
+    expect(events).toEqual(["layout", "scroll"]);
+    expect(waitResolvers).toHaveLength(2);
+    fileDiff.isPartial = false;
+    waitResolvers[1]?.();
+    await pending;
+    expect(events).toEqual(["layout", "scroll", "layout", "scroll"]);
   });
 });
 

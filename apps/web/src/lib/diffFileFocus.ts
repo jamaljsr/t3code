@@ -1,4 +1,4 @@
-import type { CodeViewScrollTarget, FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs";
+import type { CodeViewScrollTarget, FileDiffMetadata } from "@pierre/diffs";
 import type { TurnId } from "@t3tools/contracts";
 
 import { getDiffLineStat } from "./diffRendering";
@@ -8,8 +8,6 @@ export const DIFF_FILE_TREE_DEFAULT_WIDTH = 200;
 export const DIFF_FILE_TREE_MIN_WIDTH = 140;
 export const DIFF_FILE_TREE_DIFFS_MIN_WIDTH = 240;
 export const DIFF_FILE_TREE_WIDTH_STORAGE_KEY = "t3code:diff-panel-file-tree-width";
-
-const NEVER_SETTLING_FILE_CONTENTS = new Promise<never>(() => {});
 
 export function collapseAllExcept(
   fileKeys: ReadonlyArray<string>,
@@ -44,6 +42,74 @@ export function firstHunkScrollTarget(
   };
 }
 
+export const DIFF_HYDRATION_WAIT_TIMEOUT_MS = 2_000;
+
+export function waitForFileDiffHydration(
+  fileDiff: Pick<FileDiffMetadata, "isPartial">,
+  options: {
+    shouldHydrate: boolean;
+    schedule?: (callback: () => void) => void;
+    now?: () => number;
+    timeoutMs?: number;
+  },
+): Promise<void> {
+  if (!options.shouldHydrate || !fileDiff.isPartial) {
+    return Promise.resolve();
+  }
+
+  const schedule = options.schedule ?? ((callback) => requestAnimationFrame(callback));
+  const now = options.now ?? Date.now;
+  const timeoutMs = options.timeoutMs ?? DIFF_HYDRATION_WAIT_TIMEOUT_MS;
+  const startedAt = now();
+
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (!fileDiff.isPartial || now() - startedAt >= timeoutMs) {
+        resolve();
+        return;
+      }
+      schedule(tick);
+    };
+    tick();
+  });
+}
+
+export function afterNextLayout(schedule = requestAnimationFrame): Promise<void> {
+  return new Promise((resolve) => {
+    schedule(() => {
+      schedule(() => {
+        resolve();
+      });
+    });
+  });
+}
+
+export async function revealFocusedDiffAfterHydration(options: {
+  fileDiff: Pick<FileDiffMetadata, "isPartial">;
+  needsHydration: boolean;
+  isCancelled: () => boolean;
+  scroll: () => void;
+  wait?: typeof waitForFileDiffHydration;
+  afterLayout?: () => Promise<void>;
+}): Promise<void> {
+  const wait = options.wait ?? waitForFileDiffHydration;
+  const afterLayout = options.afterLayout ?? afterNextLayout;
+
+  await wait(options.fileDiff, { shouldHydrate: options.needsHydration });
+  if (options.isCancelled()) return;
+  if (options.needsHydration) await afterLayout();
+  if (!options.isCancelled()) options.scroll();
+  if (options.isCancelled() || !options.fileDiff.isPartial) return;
+
+  await wait(options.fileDiff, {
+    shouldHydrate: true,
+    timeoutMs: Number.MAX_SAFE_INTEGER,
+  });
+  if (options.isCancelled()) return;
+  await afterLayout();
+  if (!options.isCancelled()) options.scroll();
+}
+
 export function canExpandUnchanged(input: {
   readonly hasGitLoader: boolean;
   readonly selectedTurnId: TurnId | string | null;
@@ -67,21 +133,6 @@ export function shouldExpandUnchanged(input: {
   return input.fileKeys.every(
     (fileKey) => fileKey === input.focusedFileKey || input.collapsedFileKeys.has(fileKey),
   );
-}
-
-export function createFocusedFileContentsLoader(
-  loadDiffFiles: FileDiffContentsLoader | undefined,
-  focusedFileDiff: FileDiffMetadata | null,
-): FileDiffContentsLoader | undefined {
-  if (!loadDiffFiles || !focusedFileDiff) {
-    return undefined;
-  }
-  return (fileDiff) => {
-    if (fileDiff !== focusedFileDiff) {
-      return NEVER_SETTLING_FILE_CONTENTS;
-    }
-    return loadDiffFiles(fileDiff);
-  };
 }
 
 export function didRevealRequestChange(previousRequestId: number, requestId: number): boolean {
