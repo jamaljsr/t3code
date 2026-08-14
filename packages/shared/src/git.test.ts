@@ -7,6 +7,7 @@ import {
   isTemporaryWorktreeBranch,
   normalizeGitRemoteUrl,
   parseGitHubRepositoryNameWithOwnerFromRemoteUrl,
+  sanitizeGeneratedWorktreeBranchName,
   WORKTREE_BRANCH_PREFIX,
 } from "./git.ts";
 
@@ -98,6 +99,30 @@ describe("isTemporaryWorktreeBranch", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/feature/demo`)).toBe(false);
     expect(isTemporaryWorktreeBranch("main")).toBe(false);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef-extra`)).toBe(false);
+  });
+});
+
+describe("sanitizeGeneratedWorktreeBranchName", () => {
+  it("emits a sanitized fragment without the worktree prefix", () => {
+    expect(sanitizeGeneratedWorktreeBranchName("Safer Reconnect Backoff")).toBe(
+      "safer-reconnect-backoff",
+    );
+  });
+
+  it("strips a leading worktree prefix from model output", () => {
+    expect(sanitizeGeneratedWorktreeBranchName(`${WORKTREE_BRANCH_PREFIX}/safer-reconnect`)).toBe(
+      "safer-reconnect",
+    );
+  });
+
+  it("strips refs/heads/ before sanitizing", () => {
+    expect(sanitizeGeneratedWorktreeBranchName("refs/heads/safer-reconnect")).toBe(
+      "safer-reconnect",
+    );
+  });
+
+  it("falls back to update when the fragment is empty", () => {
+    expect(sanitizeGeneratedWorktreeBranchName("   ")).toBe("update");
   });
 });
 
