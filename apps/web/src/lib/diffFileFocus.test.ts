@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DIFF_FILE_TREE_DIFFS_MIN_WIDTH,
   DIFF_FILE_TREE_MIN_WIDTH,
+  DIFF_FILE_TREE_VISIBLE_BY_DEFAULT,
   canExpandUnchanged,
   clampDiffFileTreeMaxWidth,
   collapseAllExcept,
@@ -360,6 +361,12 @@ describe("didRevealRequestChange", () => {
   it("detects a new chat reveal request", () => {
     expect(didRevealRequestChange(3, 4)).toBe(true);
     expect(didRevealRequestChange(4, 4)).toBe(false);
+  });
+});
+
+describe("DIFF_FILE_TREE_VISIBLE_BY_DEFAULT", () => {
+  it("opens the diff panel with the file tree shown", () => {
+    expect(DIFF_FILE_TREE_VISIBLE_BY_DEFAULT).toBe(true);
   });
 });
 

@@ -11,3 +11,15 @@ export function toggleAllDiffFiles(
 ): ReadonlySet<string> {
   return areAllDiffFilesCollapsed(fileKeys, collapsedFileKeys) ? new Set() : new Set(fileKeys);
 }
+
+export function collapsedDiffFileKeysForScope(input: {
+  readonly storedScopeKey: string | null;
+  readonly scopeKey: string | null;
+  readonly storedFileKeys: ReadonlySet<string>;
+  readonly fileKeys: ReadonlyArray<string>;
+}): ReadonlySet<string> {
+  if (input.storedScopeKey === input.scopeKey) {
+    return input.storedFileKeys;
+  }
+  return new Set(input.fileKeys);
+}

@@ -38,8 +38,13 @@ import {
   resolveDiffThemeName,
   resolveFileDiffPath,
 } from "../lib/diffRendering";
-import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollapse";
 import {
+  areAllDiffFilesCollapsed,
+  collapsedDiffFileKeysForScope,
+  toggleAllDiffFiles,
+} from "../lib/diffCollapse";
+import {
+  DIFF_FILE_TREE_VISIBLE_BY_DEFAULT,
   canExpandUnchanged,
   collapseAllExcept,
   didRevealRequestChange,
@@ -127,7 +132,7 @@ export default function DiffPanel({
     fileKeys: EMPTY_COLLAPSED_DIFF_FILE_KEYS,
   }));
   const [codeViewRevision, setCodeViewRevision] = useState(0);
-  const [fileTreeVisible, setFileTreeVisible] = useState(false);
+  const [fileTreeVisible, setFileTreeVisible] = useState(DIFF_FILE_TREE_VISIBLE_BY_DEFAULT);
   const [treeFocus, setTreeFocus] = useState<{
     readonly path: string;
     readonly requestId: number;
@@ -235,10 +240,6 @@ export default function DiffPanel({
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}:${reviewSectionId}`
     : null;
   const codeViewMountKey = `${collapseScopeKey ?? reviewSectionId}:${codeViewRevision}`;
-  const collapsedDiffFileKeys =
-    collapsedDiffFiles.scopeKey === collapseScopeKey
-      ? collapsedDiffFiles.fileKeys
-      : EMPTY_COLLAPSED_DIFF_FILE_KEYS;
 
   useEffect(() => {
     setTreeFocus(null);
@@ -443,6 +444,20 @@ export default function DiffPanel({
       })),
     [renderableFiles],
   );
+  const diffFileKeys = useMemo(
+    () => renderableFileEntries.map((entry) => entry.fileKey),
+    [renderableFileEntries],
+  );
+  const collapsedDiffFileKeys = useMemo(
+    () =>
+      collapsedDiffFileKeysForScope({
+        storedScopeKey: collapsedDiffFiles.scopeKey,
+        scopeKey: collapseScopeKey,
+        storedFileKeys: collapsedDiffFiles.fileKeys,
+        fileKeys: diffFileKeys,
+      }),
+    [collapseScopeKey, collapsedDiffFiles.fileKeys, collapsedDiffFiles.scopeKey, diffFileKeys],
+  );
   const codeViewFiles = useMemo(
     () =>
       renderableFileEntries.map(({ fileDiff, fileKey }) => {
@@ -457,7 +472,6 @@ export default function DiffPanel({
   );
   const treeFiles = useMemo(() => toTurnDiffTreeFiles(codeViewFiles), [codeViewFiles]);
   const showFileTree = fileTreeVisible && treeFiles.length > 0;
-  const diffFileKeys = useMemo(() => codeViewFiles.map((file) => file.fileKey), [codeViewFiles]);
   const focusedFile = treeFocus
     ? (codeViewFiles.find((file) => file.filePath === treeFocus.path) ?? null)
     : null;
@@ -584,7 +598,14 @@ export default function DiffPanel({
   const toggleDiffFileCollapsed = useCallback(
     (fileKey: string) => {
       setCollapsedDiffFiles((current) => {
-        const next = new Set(current.scopeKey === collapseScopeKey ? current.fileKeys : []);
+        const next = new Set(
+          collapsedDiffFileKeysForScope({
+            storedScopeKey: current.scopeKey,
+            scopeKey: collapseScopeKey,
+            storedFileKeys: current.fileKeys,
+            fileKeys: diffFileKeys,
+          }),
+        );
         if (next.has(fileKey)) {
           next.delete(fileKey);
         } else {
@@ -593,14 +614,18 @@ export default function DiffPanel({
         return { scopeKey: collapseScopeKey, fileKeys: next };
       });
     },
-    [collapseScopeKey],
+    [collapseScopeKey, diffFileKeys],
   );
 
   const toggleDiffFileCollapse = useCallback(() => {
     setCodeViewRevision((current) => current + 1);
     setCollapsedDiffFiles((current) => {
-      const currentKeys =
-        current.scopeKey === collapseScopeKey ? current.fileKeys : EMPTY_COLLAPSED_DIFF_FILE_KEYS;
+      const currentKeys = collapsedDiffFileKeysForScope({
+        storedScopeKey: current.scopeKey,
+        scopeKey: collapseScopeKey,
+        storedFileKeys: current.fileKeys,
+        fileKeys: diffFileKeys,
+      });
 
       return {
         scopeKey: collapseScopeKey,

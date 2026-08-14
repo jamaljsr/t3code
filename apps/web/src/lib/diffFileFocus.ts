@@ -8,6 +8,7 @@ export const DIFF_FILE_TREE_DEFAULT_WIDTH = 200;
 export const DIFF_FILE_TREE_MIN_WIDTH = 140;
 export const DIFF_FILE_TREE_DIFFS_MIN_WIDTH = 240;
 export const DIFF_FILE_TREE_WIDTH_STORAGE_KEY = "t3code:diff-panel-file-tree-width";
+export const DIFF_FILE_TREE_VISIBLE_BY_DEFAULT = true;
 
 export function collapseAllExcept(
   fileKeys: ReadonlyArray<string>,
