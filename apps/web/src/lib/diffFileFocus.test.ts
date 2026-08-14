@@ -118,6 +118,17 @@ describe("shouldExpandUnchanged", () => {
     ).toBe(false);
   });
 
+  it("is false when the focused file is collapsed", () => {
+    expect(
+      shouldExpandUnchanged({
+        canExpand: true,
+        focusedFileKey: "b",
+        collapsedFileKeys: new Set(keys),
+        fileKeys: keys,
+      }),
+    ).toBe(false);
+  });
+
   it("is false without a focused file or git loader", () => {
     expect(
       shouldExpandUnchanged({
@@ -139,7 +150,7 @@ describe("shouldExpandUnchanged", () => {
 });
 
 describe("createFocusedFileContentsLoader", () => {
-  it("delegates hydration only for the focused metadata object", async () => {
+  it("delegates focused hydration and leaves sibling hydration pending", async () => {
     const focusedFile = fileWithHunks([]);
     const siblingFile = fileWithHunks([]);
     const loadedFiles = {
@@ -153,7 +164,17 @@ describe("createFocusedFileContentsLoader", () => {
     }, focusedFile);
 
     await expect(loader?.(focusedFile)).resolves.toBe(loadedFiles);
-    await expect(loader?.(siblingFile)).rejects.toThrow("unfocused diff file");
+    let siblingStatus = "pending";
+    void loader?.(siblingFile).then(
+      () => {
+        siblingStatus = "resolved";
+      },
+      () => {
+        siblingStatus = "rejected";
+      },
+    );
+    await Promise.resolve();
+    expect(siblingStatus).toBe("pending");
     expect(calls).toEqual([focusedFile]);
   });
 

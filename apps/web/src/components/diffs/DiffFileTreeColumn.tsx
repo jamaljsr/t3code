@@ -24,8 +24,9 @@ export function DiffFileTreeColumn({
   onSelectFile,
 }: DiffFileTreeColumnProps) {
   const columnRef = useRef<HTMLDivElement>(null);
-  const [panelWidth, setPanelWidth] = useState(DIFF_FILE_TREE_DEFAULT_WIDTH * 2);
-  const maxWidth = clampDiffFileTreeMaxWidth(panelWidth);
+  const [panelWidth, setPanelWidth] = useState<number | null>(null);
+  const maxWidth =
+    panelWidth === null ? Number.POSITIVE_INFINITY : clampDiffFileTreeMaxWidth(panelWidth);
   const { width, handlers } = useResizableWidth({
     storageKey: DIFF_FILE_TREE_WIDTH_STORAGE_KEY,
     defaultWidth: DIFF_FILE_TREE_DEFAULT_WIDTH,

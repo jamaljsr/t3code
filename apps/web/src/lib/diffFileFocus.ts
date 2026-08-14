@@ -9,6 +9,8 @@ export const DIFF_FILE_TREE_MIN_WIDTH = 140;
 export const DIFF_FILE_TREE_DIFFS_MIN_WIDTH = 240;
 export const DIFF_FILE_TREE_WIDTH_STORAGE_KEY = "t3code:diff-panel-file-tree-width";
 
+const NEVER_SETTLING_FILE_CONTENTS = new Promise<never>(() => {});
+
 export function collapseAllExcept(
   fileKeys: ReadonlyArray<string>,
   targetKey: string,
@@ -55,7 +57,11 @@ export function shouldExpandUnchanged(input: {
   readonly collapsedFileKeys: ReadonlySet<string>;
   readonly fileKeys: ReadonlyArray<string>;
 }): boolean {
-  if (!input.canExpand || input.focusedFileKey === null) {
+  if (
+    !input.canExpand ||
+    input.focusedFileKey === null ||
+    input.collapsedFileKeys.has(input.focusedFileKey)
+  ) {
     return false;
   }
   return input.fileKeys.every(
@@ -72,7 +78,7 @@ export function createFocusedFileContentsLoader(
   }
   return (fileDiff) => {
     if (fileDiff !== focusedFileDiff) {
-      return Promise.reject(new Error("Cannot hydrate an unfocused diff file."));
+      return NEVER_SETTLING_FILE_CONTENTS;
     }
     return loadDiffFiles(fileDiff);
   };

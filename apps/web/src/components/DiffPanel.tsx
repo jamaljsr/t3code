@@ -466,6 +466,17 @@ export default function DiffPanel({
     () => createFocusedFileContentsLoader(loadDiffFiles, focusedFile?.fileDiff ?? null),
     [focusedFile?.fileDiff, loadDiffFiles],
   );
+  const codeViewLoadDiffFiles = expandUnchanged ? focusedLoadDiffFiles : loadDiffFiles;
+  const treeFocusEffectStateRef = useRef({
+    expandUnchanged,
+    focusedFile,
+    loadDiffFiles,
+  });
+  treeFocusEffectStateRef.current = {
+    expandUnchanged,
+    focusedFile,
+    loadDiffFiles,
+  };
 
   const handleSelectTreeFile = useCallback(
     (path: string) => {
@@ -499,17 +510,22 @@ export default function DiffPanel({
       selectedFileRevealRequestId,
     );
     previousSelectedFileRevealRequestIdRef.current = selectedFileRevealRequestId;
-    if (revealRequestChanged || !treeFocus || !focusedFile) return;
-    const target = firstHunkScrollTarget(focusedFile.fileDiff, focusedFile.fileKey);
+    const {
+      expandUnchanged: shouldHydrate,
+      focusedFile: currentFocusedFile,
+      loadDiffFiles: currentLoadDiffFiles,
+    } = treeFocusEffectStateRef.current;
+    if (revealRequestChanged || !treeFocus || !currentFocusedFile) return;
+    const target = firstHunkScrollTarget(currentFocusedFile.fileDiff, currentFocusedFile.fileKey);
     const scroll = () => codeViewRef.current?.scrollTo(target);
 
-    if (!expandUnchanged || !loadDiffFiles) {
+    if (!shouldHydrate || !currentLoadDiffFiles || !currentFocusedFile.fileDiff.isPartial) {
       scroll();
       return;
     }
 
     let cancelled = false;
-    void loadDiffFiles(focusedFile.fileDiff)
+    void currentLoadDiffFiles(currentFocusedFile.fileDiff)
       .then(() => {
         if (!cancelled) scroll();
       })
@@ -520,14 +536,7 @@ export default function DiffPanel({
     return () => {
       cancelled = true;
     };
-  }, [
-    treeFocus,
-    focusedFile,
-    expandUnchanged,
-    loadDiffFiles,
-    codeViewMountKey,
-    selectedFileRevealRequestId,
-  ]);
+  }, [treeFocus, focusedFile?.fileKey, selectedFileRevealRequestId]);
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -1071,7 +1080,7 @@ export default function DiffPanel({
                       theme: resolveDiffThemeName(resolvedTheme),
                       themeType: resolvedTheme as DiffThemeType,
                       stickyHeaders: true,
-                      ...(focusedLoadDiffFiles ? { loadDiffFiles: focusedLoadDiffFiles } : {}),
+                      ...(codeViewLoadDiffFiles ? { loadDiffFiles: codeViewLoadDiffFiles } : {}),
                       expandUnchanged,
                     }}
                   />
