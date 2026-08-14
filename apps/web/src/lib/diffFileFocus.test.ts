@@ -8,9 +8,14 @@ import {
   clampDiffFileTreeMaxWidth,
   collapseAllExcept,
   didRevealRequestChange,
+  diffHunkNavLabel,
   firstHunkScrollTarget,
+  hunkScrollTarget,
   revealFocusedDiffAfterHydration,
   shouldExpandUnchanged,
+  shouldRenderDiffHunkNav,
+  shouldShowDiffHunkNav,
+  stepDiffHunkIndex,
   toTurnDiffTreeFiles,
   waitForFileDiffHydration,
 } from "./diffFileFocus";
@@ -88,6 +93,66 @@ describe("firstHunkScrollTarget", () => {
       id: "file-a",
       align: "start",
     });
+  });
+});
+
+describe("hunkScrollTarget", () => {
+  const twoHunks = fileWithHunks([
+    { additionStart: 4, additionLines: 2, deletionStart: 4, deletionLines: 1 },
+    { additionStart: 80, additionLines: 3, deletionStart: 70, deletionLines: 0 },
+  ]);
+
+  it("scrolls to a later hunk's first added line", () => {
+    expect(hunkScrollTarget(twoHunks, "file-a", 1)).toEqual({
+      type: "line",
+      id: "file-a",
+      lineNumber: 80,
+      side: "additions",
+      align: "start",
+    });
+  });
+
+  it("falls back to the file header when the hunk index is missing", () => {
+    expect(hunkScrollTarget(fileWithHunks([]), "file-a", 0)).toEqual({
+      type: "item",
+      id: "file-a",
+      align: "start",
+    });
+  });
+});
+
+describe("stepDiffHunkIndex", () => {
+  it("moves forward and back without wrapping past the ends", () => {
+    expect(stepDiffHunkIndex(0, 3, 1)).toBe(1);
+    expect(stepDiffHunkIndex(2, 3, 1)).toBe(2);
+    expect(stepDiffHunkIndex(0, 3, -1)).toBe(0);
+    expect(stepDiffHunkIndex(1, 3, -1)).toBe(0);
+  });
+});
+
+describe("diffHunkNavLabel", () => {
+  it("uses 1-based hunk numbers", () => {
+    expect(diffHunkNavLabel(0, 3)).toBe("1 of 3");
+    expect(diffHunkNavLabel(2, 3)).toBe("3 of 3");
+  });
+});
+
+describe("shouldShowDiffHunkNav", () => {
+  it("is true only when a file has more than one hunk", () => {
+    expect(shouldShowDiffHunkNav(2)).toBe(true);
+    expect(shouldShowDiffHunkNav(1)).toBe(false);
+    expect(shouldShowDiffHunkNav(0)).toBe(false);
+  });
+});
+
+describe("shouldRenderDiffHunkNav", () => {
+  it("shows on any expanded multi-hunk file, without requiring tree focus", () => {
+    expect(shouldRenderDiffHunkNav({ collapsed: false, hunkCount: 3 })).toBe(true);
+  });
+
+  it("hides when the file is collapsed or has a single hunk", () => {
+    expect(shouldRenderDiffHunkNav({ collapsed: true, hunkCount: 3 })).toBe(false);
+    expect(shouldRenderDiffHunkNav({ collapsed: false, hunkCount: 1 })).toBe(false);
   });
 });
 

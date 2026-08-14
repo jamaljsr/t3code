@@ -203,6 +203,7 @@ const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
   align-items: center !important;
   line-height: 1 !important;
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 [data-diffs-header] [data-additions-count],

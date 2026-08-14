@@ -44,8 +44,11 @@ import {
   collapseAllExcept,
   didRevealRequestChange,
   firstHunkScrollTarget,
+  hunkScrollTarget,
   revealFocusedDiffAfterHydration,
   shouldExpandUnchanged,
+  shouldRenderDiffHunkNav,
+  stepDiffHunkIndex,
   toTurnDiffTreeFiles,
 } from "../lib/diffFileFocus";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
@@ -57,6 +60,7 @@ import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./Dif
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { DiffFileTreeColumn } from "./diffs/DiffFileTreeColumn";
+import { DiffHunkNav } from "./diffs/DiffHunkNav";
 import { Button } from "./ui/button";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 import { Switch } from "./ui/switch";
@@ -128,6 +132,9 @@ export default function DiffPanel({
     readonly path: string;
     readonly requestId: number;
   } | null>(null);
+  const [focusedHunkIndexes, setFocusedHunkIndexes] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
   const codeViewRef = useRef<AnnotatableCodeViewHandle>(null);
   const lastCompletedTurnRefreshRef = useRef<{
     readonly threadKey: string | null;
@@ -235,6 +242,7 @@ export default function DiffPanel({
 
   useEffect(() => {
     setTreeFocus(null);
+    setFocusedHunkIndexes(new Map());
   }, [collapseScopeKey]);
 
   const reviewSectionTitle = selectedTurn
@@ -481,12 +489,33 @@ export default function DiffPanel({
         path,
         requestId: (current?.requestId ?? 0) + 1,
       }));
+      setFocusedHunkIndexes((current) => {
+        const next = new Map(current);
+        next.set(file.fileKey, 0);
+        return next;
+      });
       setCollapsedDiffFiles({
         scopeKey: collapseScopeKey,
         fileKeys: collapseAllExcept(diffFileKeys, file.fileKey),
       });
     },
     [codeViewFiles, collapseScopeKey, diffFileKeys],
+  );
+  const goToHunk = useCallback(
+    (fileDiff: (typeof codeViewFiles)[number]["fileDiff"], fileKey: string, step: number) => {
+      const nextIndex = stepDiffHunkIndex(
+        focusedHunkIndexes.get(fileKey) ?? 0,
+        fileDiff.hunks.length,
+        step,
+      );
+      setFocusedHunkIndexes((current) => {
+        const next = new Map(current);
+        next.set(fileKey, nextIndex);
+        return next;
+      });
+      codeViewRef.current?.scrollTo(hunkScrollTarget(fileDiff, fileKey, nextIndex));
+    },
+    [focusedHunkIndexes],
   );
   const allDiffFilesCollapsed = areAllDiffFilesCollapsed(diffFileKeys, collapsedDiffFileKeys);
   const diffLineStat = useMemo(() => getDiffLineStat(renderableFiles), [renderableFiles]);
@@ -1058,6 +1087,28 @@ export default function DiffPanel({
                             {collapsed ? "Expand diff" : "Collapse diff"}
                           </TooltipPopup>
                         </Tooltip>
+                      );
+                    }}
+                    renderHeaderMetadata={(fileDiff, fileKey, collapsed) => {
+                      if (
+                        !shouldRenderDiffHunkNav({
+                          collapsed,
+                          hunkCount: fileDiff.hunks.length,
+                        })
+                      ) {
+                        return null;
+                      }
+                      return (
+                        <DiffHunkNav
+                          hunkIndex={stepDiffHunkIndex(
+                            focusedHunkIndexes.get(fileKey) ?? 0,
+                            fileDiff.hunks.length,
+                            0,
+                          )}
+                          hunkCount={fileDiff.hunks.length}
+                          onPrevious={() => goToHunk(fileDiff, fileKey, -1)}
+                          onNext={() => goToHunk(fileDiff, fileKey, 1)}
+                        />
                       );
                     }}
                     options={{

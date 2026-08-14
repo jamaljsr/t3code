@@ -16,11 +16,12 @@ export function collapseAllExcept(
   return new Set(fileKeys.filter((fileKey) => fileKey !== targetKey));
 }
 
-export function firstHunkScrollTarget(
+export function hunkScrollTarget(
   fileDiff: Pick<FileDiffMetadata, "hunks">,
   fileKey: string,
+  hunkIndex: number,
 ): CodeViewScrollTarget {
-  const hunk = fileDiff.hunks[0];
+  const hunk = fileDiff.hunks[hunkIndex];
   if (!hunk) {
     return { type: "item", id: fileKey, align: "start" };
   }
@@ -40,6 +41,33 @@ export function firstHunkScrollTarget(
     side: "deletions",
     align: "start",
   };
+}
+
+export function firstHunkScrollTarget(
+  fileDiff: Pick<FileDiffMetadata, "hunks">,
+  fileKey: string,
+): CodeViewScrollTarget {
+  return hunkScrollTarget(fileDiff, fileKey, 0);
+}
+
+export function stepDiffHunkIndex(currentIndex: number, hunkCount: number, step: number): number {
+  if (hunkCount <= 0) return 0;
+  return Math.min(hunkCount - 1, Math.max(0, currentIndex + step));
+}
+
+export function diffHunkNavLabel(hunkIndex: number, hunkCount: number): string {
+  return `${hunkIndex + 1} of ${hunkCount}`;
+}
+
+export function shouldShowDiffHunkNav(hunkCount: number): boolean {
+  return hunkCount > 1;
+}
+
+export function shouldRenderDiffHunkNav(input: {
+  readonly collapsed: boolean;
+  readonly hunkCount: number;
+}): boolean {
+  return !input.collapsed && shouldShowDiffHunkNav(input.hunkCount);
 }
 
 export const DIFF_HYDRATION_WAIT_TIMEOUT_MS = 2_000;
