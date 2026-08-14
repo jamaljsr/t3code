@@ -16,7 +16,12 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { GitCommandError, type ReviewDiffFileContentsInput } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
-import { makeGitVcsDriverCore, splitNullSeparatedGitStdoutPaths } from "./GitVcsDriverCore.ts";
+import {
+  makeGitVcsDriverCore,
+  parseReviewDiffCommitLog,
+  REVIEW_DIFF_COMMIT_LIMIT,
+  splitNullSeparatedGitStdoutPaths,
+} from "./GitVcsDriverCore.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
@@ -761,6 +766,68 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
   });
 
   describe("review diff previews", () => {
+    const record = (
+      oid: string,
+      subject: string,
+      body: string,
+      authorName: string,
+      committedAt: string,
+    ) => `${oid}\0${subject}\0${body}\0${authorName}\0${committedAt}`;
+
+    describe("parseReviewDiffCommitLog", () => {
+      it.effect("keeps newest-first order and splits subject from body", () =>
+        Effect.sync(() => {
+          const stdout = [
+            record("aaa", "newest", "body a", "Ada", "2026-08-14T12:00:00-05:00"),
+            record("bbb", "oldest", "", "Ada", "2026-08-13T12:00:00-05:00"),
+          ].join("\x1e");
+
+          const parsed = parseReviewDiffCommitLog(stdout);
+          assert.strictEqual(parsed.commitsError, false);
+          assert.strictEqual(parsed.commitsTruncated, false);
+          assert.deepStrictEqual(
+            parsed.commits.map((commit) => commit.oid),
+            ["aaa", "bbb"],
+          );
+          assert.strictEqual(parsed.commits[0]?.body, "body a");
+          assert.strictEqual(parsed.commits[1]?.body, "");
+        }),
+      );
+
+      it.effect("returns 100 commits and marks truncation when 101 records arrive", () =>
+        Effect.sync(() => {
+          const records = Array.from({ length: REVIEW_DIFF_COMMIT_LIMIT + 1 }, (_, index) =>
+            record(
+              index.toString(16).padStart(40, "0"),
+              `subject ${index}`,
+              "",
+              "Ada",
+              "2026-08-14T12:00:00-05:00",
+            ),
+          );
+          const parsed = parseReviewDiffCommitLog(records.join("\x1e"));
+          assert.strictEqual(parsed.commits.length, REVIEW_DIFF_COMMIT_LIMIT);
+          assert.strictEqual(parsed.commitsTruncated, true);
+          assert.strictEqual(parsed.commits[0]?.subject, "subject 0");
+          assert.strictEqual(
+            parsed.commits.at(-1)?.subject,
+            `subject ${REVIEW_DIFF_COMMIT_LIMIT - 1}`,
+          );
+        }),
+      );
+
+      it.effect("skips a trailing empty record and incomplete fields", () =>
+        Effect.sync(() => {
+          const stdout = `${record("aaa", "ok", "", "Ada", "2026-08-14T12:00:00-05:00")}\x1eincomplete\x1e`;
+          const parsed = parseReviewDiffCommitLog(stdout);
+          assert.deepStrictEqual(
+            parsed.commits.map((commit) => commit.oid),
+            ["aaa"],
+          );
+        }),
+      );
+    });
+
     it.effect("drops an unterminated path from truncated NUL-separated git output", () =>
       Effect.sync(() => {
         const paths = splitNullSeparatedGitStdoutPaths({

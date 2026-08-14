@@ -285,6 +285,40 @@ export function splitNullSeparatedGitStdoutPaths(
   return splitNullSeparatedPaths(result.stdout, result.stdoutTruncated);
 }
 
+export const REVIEW_DIFF_COMMIT_LIMIT = 100;
+export const REVIEW_DIFF_COMMIT_LOG_MAX_OUTPUT_BYTES = 120_000;
+
+export const emptyReviewDiffCommitLog = {
+  commits: [] as Array<{
+    oid: string;
+    subject: string;
+    body: string;
+    authorName: string;
+    committedAt: string;
+  }>,
+  commitsTruncated: false,
+  commitsError: false,
+};
+
+export function parseReviewDiffCommitLog(stdout: string): typeof emptyReviewDiffCommitLog {
+  const records = stdout.split("\x1e").filter((record) => record.length > 0);
+  const commitsTruncated = records.length > REVIEW_DIFF_COMMIT_LIMIT;
+  const selected = commitsTruncated ? records.slice(0, REVIEW_DIFF_COMMIT_LIMIT) : records;
+  const commits = [];
+  for (const record of selected) {
+    const [oid, subject, body, authorName, committedAt] = record.split("\x00");
+    if (!oid || committedAt === undefined) continue;
+    commits.push({
+      oid,
+      subject: subject ?? "",
+      body: body ?? "",
+      authorName: authorName ?? "",
+      committedAt,
+    });
+  }
+  return { commits, commitsTruncated, commitsError: false };
+}
+
 function sanitizeRemoteName(value: string): string {
   const sanitized = value
     .trim()
