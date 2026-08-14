@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { GitCommandError } from "./git.ts";
 import { VcsError } from "./vcs.ts";
 
@@ -13,6 +13,15 @@ export type ReviewDiffPreviewInput = typeof ReviewDiffPreviewInput.Type;
 export const ReviewDiffPreviewSourceKind = Schema.Literals(["working-tree", "branch-range"]);
 export type ReviewDiffPreviewSourceKind = typeof ReviewDiffPreviewSourceKind.Type;
 
+export const ReviewDiffPreviewCommit = Schema.Struct({
+  oid: TrimmedNonEmptyString,
+  subject: Schema.String,
+  body: Schema.String,
+  authorName: Schema.String,
+  committedAt: IsoDateTime,
+});
+export type ReviewDiffPreviewCommit = typeof ReviewDiffPreviewCommit.Type;
+
 export const ReviewDiffPreviewSource = Schema.Struct({
   id: TrimmedNonEmptyString,
   kind: ReviewDiffPreviewSourceKind,
@@ -22,6 +31,9 @@ export const ReviewDiffPreviewSource = Schema.Struct({
   diff: Schema.String,
   diffHash: TrimmedNonEmptyString,
   truncated: Schema.Boolean,
+  commits: Schema.optional(Schema.Array(ReviewDiffPreviewCommit)),
+  commitsTruncated: Schema.optional(Schema.Boolean),
+  commitsError: Schema.optional(Schema.Boolean),
 });
 export type ReviewDiffPreviewSource = typeof ReviewDiffPreviewSource.Type;
 
