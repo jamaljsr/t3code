@@ -39,7 +39,13 @@ import {
   resolveFileDiffPath,
 } from "../lib/diffRendering";
 import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollapse";
-import { toTurnDiffTreeFiles } from "../lib/diffFileFocus";
+import {
+  canExpandUnchanged,
+  collapseAllExcept,
+  firstHunkScrollTarget,
+  shouldExpandUnchanged,
+  toTurnDiffTreeFiles,
+} from "../lib/diffFileFocus";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useProject, useThread } from "../state/entities";
 import { resolveThreadRouteRef } from "../threadRoutes";
@@ -116,6 +122,10 @@ export default function DiffPanel({
   }));
   const [codeViewRevision, setCodeViewRevision] = useState(0);
   const [fileTreeVisible, setFileTreeVisible] = useState(false);
+  const [treeFocus, setTreeFocus] = useState<{
+    readonly path: string;
+    readonly requestId: number;
+  } | null>(null);
   const codeViewRef = useRef<AnnotatableCodeViewHandle>(null);
   const lastCompletedTurnRefreshRef = useRef<{
     readonly threadKey: string | null;
@@ -219,6 +229,11 @@ export default function DiffPanel({
     collapsedDiffFiles.scopeKey === collapseScopeKey
       ? collapsedDiffFiles.fileKeys
       : EMPTY_COLLAPSED_DIFF_FILE_KEYS;
+
+  useEffect(() => {
+    setTreeFocus(null);
+  }, [collapseScopeKey]);
+
   const reviewSectionTitle = selectedTurn
     ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
     : selectedGitScope === "unstaged"
@@ -432,6 +447,34 @@ export default function DiffPanel({
   const treeFiles = useMemo(() => toTurnDiffTreeFiles(codeViewFiles), [codeViewFiles]);
   const showFileTree = fileTreeVisible && treeFiles.length > 0;
   const diffFileKeys = useMemo(() => codeViewFiles.map((file) => file.fileKey), [codeViewFiles]);
+  const focusedFile = treeFocus
+    ? (codeViewFiles.find((file) => file.filePath === treeFocus.path) ?? null)
+    : null;
+  const expandUnchanged = shouldExpandUnchanged({
+    canExpand: canExpandUnchanged({
+      hasGitLoader: loadDiffFiles != null,
+      selectedTurnId,
+    }),
+    focusedFileKey: focusedFile?.fileKey ?? null,
+    collapsedFileKeys: collapsedDiffFileKeys,
+    fileKeys: diffFileKeys,
+  });
+
+  const handleSelectTreeFile = useCallback(
+    (path: string) => {
+      const file = codeViewFiles.find((candidate) => candidate.filePath === path);
+      if (!file) return;
+      setTreeFocus((current) => ({
+        path,
+        requestId: (current?.requestId ?? 0) + 1,
+      }));
+      setCollapsedDiffFiles({
+        scopeKey: collapseScopeKey,
+        fileKeys: collapseAllExcept(diffFileKeys, file.fileKey),
+      });
+    },
+    [codeViewFiles, collapseScopeKey, diffFileKeys],
+  );
   const allDiffFilesCollapsed = areAllDiffFilesCollapsed(diffFileKeys, collapsedDiffFileKeys);
   const diffLineStat = useMemo(() => getDiffLineStat(renderableFiles), [renderableFiles]);
   const selectedDiffFileKey = selectedFilePath
@@ -442,6 +485,30 @@ export default function DiffPanel({
     if (!selectedDiffFileKey) return;
     codeViewRef.current?.scrollTo({ type: "item", id: selectedDiffFileKey, align: "start" });
   }, [codeViewMountKey, selectedDiffFileKey, selectedFileRevealRequestId]);
+
+  useEffect(() => {
+    if (!treeFocus || !focusedFile) return;
+    const target = firstHunkScrollTarget(focusedFile.fileDiff, focusedFile.fileKey);
+    const scroll = () => codeViewRef.current?.scrollTo(target);
+
+    if (!expandUnchanged || !loadDiffFiles) {
+      scroll();
+      return;
+    }
+
+    let cancelled = false;
+    void loadDiffFiles(focusedFile.fileDiff)
+      .then(() => {
+        if (!cancelled) scroll();
+      })
+      .catch(() => {
+        // Hydration failed: keep hunks, still jump. No toast.
+        if (!cancelled) scroll();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [treeFocus, focusedFile, expandUnchanged, loadDiffFiles, codeViewMountKey]);
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -860,9 +927,9 @@ export default function DiffPanel({
             {showFileTree ? (
               <DiffFileTreeColumn
                 files={treeFiles}
-                selectedPath={null}
+                selectedPath={treeFocus?.path ?? null}
                 resolvedTheme={resolvedTheme}
-                onSelectFile={() => {}}
+                onSelectFile={handleSelectTreeFile}
               />
             ) : null}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -986,6 +1053,7 @@ export default function DiffPanel({
                       themeType: resolvedTheme as DiffThemeType,
                       stickyHeaders: true,
                       ...(loadDiffFiles ? { loadDiffFiles } : {}),
+                      expandUnchanged,
                     }}
                   />
                 </div>
