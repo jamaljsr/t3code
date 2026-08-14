@@ -56,6 +56,7 @@ import {
   stepDiffHunkIndex,
   toTurnDiffTreeFiles,
 } from "../lib/diffFileFocus";
+import { shouldShowDiffCommitPane } from "../lib/diffCommitList";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useProject, useThread } from "../state/entities";
 import { resolveThreadRouteRef } from "../threadRoutes";
@@ -339,6 +340,20 @@ export default function DiffPanel({
   const selectedGitSource = branchDiffPreview.data?.sources.find(
     (source) => source.kind === (selectedGitScope === "unstaged" ? "working-tree" : "branch-range"),
   );
+  const workingTreeSource = branchDiffPreview.data?.sources.find(
+    (source) => source.kind === "working-tree",
+  );
+  const branchRangeSource = branchDiffPreview.data?.sources.find(
+    (source) => source.kind === "branch-range",
+  );
+  const showUncommitted = (workingTreeSource?.diff.trim().length ?? 0) > 0;
+  const branchCommits = branchRangeSource?.commits ?? [];
+  const showCommitList = shouldShowDiffCommitPane({
+    selectedTurnId,
+    commitCount: branchCommits.length,
+    showUncommitted,
+    commitsError: branchRangeSource?.commitsError === true,
+  });
   const loadDiffFiles = useMemo<FileDiffContentsLoader | undefined>(() => {
     const preview = branchDiffPreview.data;
     if (selectedTurnId !== null || !activeThread || !preview || !selectedGitSource) {
@@ -999,6 +1014,20 @@ export default function DiffPanel({
                 selectedPath={treeFocus?.path ?? null}
                 resolvedTheme={resolvedTheme}
                 onSelectFile={handleSelectTreeFile}
+                commitList={
+                  showCommitList
+                    ? {
+                        commits: branchCommits,
+                        commitsTruncated: branchRangeSource?.commitsTruncated === true,
+                        commitsError: branchRangeSource?.commitsError === true,
+                        showUncommitted,
+                        workingTreeSelected: selectedGitScope === "unstaged",
+                        listIdentity: `${branchRangeSource?.diffHash ?? ""}:${branchRangeSource?.baseRef ?? ""}`,
+                        timestampFormat: settings.timestampFormat,
+                        onSelectUncommitted: () => selectGitScope("unstaged"),
+                      }
+                    : null
+                }
               />
             ) : null}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
