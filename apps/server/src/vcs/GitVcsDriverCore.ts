@@ -301,7 +301,10 @@ export const emptyReviewDiffCommitLog = {
 };
 
 export function parseReviewDiffCommitLog(stdout: string): typeof emptyReviewDiffCommitLog {
-  const records = stdout.split("\x1e").filter((record) => record.length > 0);
+  const records = stdout
+    .split("\x1e")
+    .map((record) => record.trim())
+    .filter((record) => record.length > 0);
   const commitsTruncated = records.length > REVIEW_DIFF_COMMIT_LIMIT;
   const selected = commitsTruncated ? records.slice(0, REVIEW_DIFF_COMMIT_LIMIT) : records;
   const commits = [];
@@ -2224,7 +2227,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             "--format=%H%x00%s%x00%b%x00%an%x00%aI%x1e",
             `${baseRef}..HEAD`,
           ],
-          { maxOutputBytes: REVIEW_DIFF_COMMIT_LOG_MAX_OUTPUT_BYTES },
+          {
+            maxOutputBytes: REVIEW_DIFF_COMMIT_LOG_MAX_OUTPUT_BYTES,
+            appendTruncationMarker: true,
+          },
         ).pipe(
           Effect.map((result) => {
             const parsed = parseReviewDiffCommitLog(result.stdout);

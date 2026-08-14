@@ -826,6 +826,20 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
           );
         }),
       );
+
+      it.effect("trims leading newlines that git log inserts after record separators", () =>
+        Effect.sync(() => {
+          const stdout = `${record("aaa", "newest", "body a", "Ada", "2026-08-14T12:00:00-05:00")}\x1e\n${record("bbb", "oldest", "", "Ada", "2026-08-13T12:00:00-05:00")}\x1e\n`;
+          const parsed = parseReviewDiffCommitLog(stdout);
+          assert.deepStrictEqual(
+            parsed.commits.map((commit) => commit.oid),
+            ["aaa", "bbb"],
+          );
+          for (const commit of parsed.commits) {
+            assert.notInclude(commit.oid, "\n");
+          }
+        }),
+      );
     });
 
     it.effect("attaches newest-first commits to the branch-range source only", () =>
