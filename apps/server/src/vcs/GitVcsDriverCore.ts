@@ -2206,69 +2206,90 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           )
         : null);
 
-    const dirtyTrackedResult = yield* executeGit(
-      "GitVcsDriver.getReviewDiffPreview.dirtyTracked",
-      input.cwd,
+    const emptyGitResult = {
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    };
+    const commitLogEffect = baseRef
+      ? executeGit(
+          "GitVcsDriver.getReviewDiffPreview.log",
+          input.cwd,
+          [
+            "log",
+            "-n",
+            String(REVIEW_DIFF_COMMIT_LIMIT + 1),
+            "--format=%H%x00%s%x00%b%x00%an%x00%aI%x1e",
+            `${baseRef}..HEAD`,
+          ],
+          { maxOutputBytes: REVIEW_DIFF_COMMIT_LOG_MAX_OUTPUT_BYTES },
+        ).pipe(
+          Effect.map((result) => {
+            const parsed = parseReviewDiffCommitLog(result.stdout);
+            return {
+              ...parsed,
+              commitsTruncated: parsed.commitsTruncated || result.stdoutTruncated,
+            };
+          }),
+          Effect.orElseSucceed(() => ({
+            ...emptyReviewDiffCommitLog,
+            commitsError: true,
+          })),
+        )
+      : Effect.succeed(emptyReviewDiffCommitLog);
+    const [dirtyTrackedResult, dirtyUntracked, baseResult, commitLog] = yield* Effect.all(
       [
-        "diff",
-        "--patch",
-        "--no-color",
-        "--no-ext-diff",
-        "--no-textconv",
-        "--minimal",
-        ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
-        "HEAD",
-        "--",
+        executeGit(
+          "GitVcsDriver.getReviewDiffPreview.dirtyTracked",
+          input.cwd,
+          [
+            "diff",
+            "--patch",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--minimal",
+            ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
+            "HEAD",
+            "--",
+          ],
+          {
+            maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
+            appendTruncationMarker: true,
+          },
+        ).pipe(Effect.orElseSucceed(() => emptyGitResult)),
+        readUntrackedReviewDiffs(input.cwd).pipe(
+          Effect.orElseSucceed(() => ({ diff: "", truncated: false })),
+        ),
+        baseRef && branch
+          ? executeGit(
+              "GitVcsDriver.getReviewDiffPreview.base",
+              input.cwd,
+              [
+                "diff",
+                "--patch",
+                "--no-color",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--minimal",
+                ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
+                `${baseRef}...HEAD`,
+              ],
+              {
+                maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
+                appendTruncationMarker: true,
+              },
+            ).pipe(Effect.orElseSucceed(() => emptyGitResult))
+          : Effect.succeed(null),
+        commitLogEffect,
       ],
-      {
-        maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
-        appendTruncationMarker: true,
-      },
-    ).pipe(
-      Effect.orElseSucceed(() => ({
-        exitCode: 0,
-        stdout: "",
-        stderr: "",
-        stdoutTruncated: false,
-        stderrTruncated: false,
-      })),
-    );
-    const dirtyUntracked = yield* readUntrackedReviewDiffs(input.cwd).pipe(
-      Effect.orElseSucceed(() => ({ diff: "", truncated: false })),
+      { concurrency: "unbounded" },
     );
     const dirtyDiff = [dirtyTrackedResult.stdout.trimEnd(), dirtyUntracked.diff.trimEnd()]
       .filter((diff) => diff.length > 0)
       .join("\n");
-
-    const baseResult =
-      baseRef && branch
-        ? yield* executeGit(
-            "GitVcsDriver.getReviewDiffPreview.base",
-            input.cwd,
-            [
-              "diff",
-              "--patch",
-              "--no-color",
-              "--no-ext-diff",
-              "--no-textconv",
-              "--minimal",
-              ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
-              `${baseRef}...HEAD`,
-            ],
-            {
-              maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
-              appendTruncationMarker: true,
-            },
-          ).pipe(
-            Effect.orElseSucceed(() => ({
-              exitCode: 0,
-              stdout: "",
-              stderr: "",
-              stdoutTruncated: false,
-              stderrTruncated: false,
-            })),
-          )
-        : null;
     const baseDiff = baseResult?.stdout ?? "";
     const hashDiff = (diff: string) =>
       crypto.digest("SHA-256", new TextEncoder().encode(diff)).pipe(
@@ -2309,6 +2330,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         diff: baseDiff,
         diffHash: baseDiffHash,
         truncated: baseResult?.stdoutTruncated ?? false,
+        commits: commitLog.commits,
+        commitsTruncated: commitLog.commitsTruncated,
+        commitsError: commitLog.commitsError,
       },
     ];
 
