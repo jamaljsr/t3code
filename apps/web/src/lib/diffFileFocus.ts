@@ -1,4 +1,4 @@
-import type { CodeViewScrollTarget, FileDiffMetadata } from "@pierre/diffs";
+import type { CodeViewScrollTarget, FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs";
 import type { TurnId } from "@t3tools/contracts";
 
 import { getDiffLineStat } from "./diffRendering";
@@ -61,6 +61,25 @@ export function shouldExpandUnchanged(input: {
   return input.fileKeys.every(
     (fileKey) => fileKey === input.focusedFileKey || input.collapsedFileKeys.has(fileKey),
   );
+}
+
+export function createFocusedFileContentsLoader(
+  loadDiffFiles: FileDiffContentsLoader | undefined,
+  focusedFileDiff: FileDiffMetadata | null,
+): FileDiffContentsLoader | undefined {
+  if (!loadDiffFiles || !focusedFileDiff) {
+    return undefined;
+  }
+  return (fileDiff) => {
+    if (fileDiff !== focusedFileDiff) {
+      return Promise.reject(new Error("Cannot hydrate an unfocused diff file."));
+    }
+    return loadDiffFiles(fileDiff);
+  };
+}
+
+export function didRevealRequestChange(previousRequestId: number, requestId: number): boolean {
+  return previousRequestId !== requestId;
 }
 
 export function clampDiffFileTreeMaxWidth(panelWidth: number): number {

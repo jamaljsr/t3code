@@ -7,6 +7,8 @@ import {
   canExpandUnchanged,
   clampDiffFileTreeMaxWidth,
   collapseAllExcept,
+  createFocusedFileContentsLoader,
+  didRevealRequestChange,
   firstHunkScrollTarget,
   shouldExpandUnchanged,
   toTurnDiffTreeFiles,
@@ -133,6 +135,43 @@ describe("shouldExpandUnchanged", () => {
         fileKeys: keys,
       }),
     ).toBe(false);
+  });
+});
+
+describe("createFocusedFileContentsLoader", () => {
+  it("delegates hydration only for the focused metadata object", async () => {
+    const focusedFile = fileWithHunks([]);
+    const siblingFile = fileWithHunks([]);
+    const loadedFiles = {
+      oldFile: { name: "src/app.ts", contents: "before\n" },
+      newFile: { name: "src/app.ts", contents: "after\n" },
+    };
+    const calls: FileDiffMetadata[] = [];
+    const loader = createFocusedFileContentsLoader(async (fileDiff) => {
+      calls.push(fileDiff);
+      return loadedFiles;
+    }, focusedFile);
+
+    await expect(loader?.(focusedFile)).resolves.toBe(loadedFiles);
+    await expect(loader?.(siblingFile)).rejects.toThrow("unfocused diff file");
+    expect(calls).toEqual([focusedFile]);
+  });
+
+  it("is absent without both a loader and focused file", () => {
+    const loader = async () => ({
+      oldFile: { name: "src/app.ts", contents: "before\n" },
+      newFile: { name: "src/app.ts", contents: "after\n" },
+    });
+
+    expect(createFocusedFileContentsLoader(undefined, fileWithHunks([]))).toBeUndefined();
+    expect(createFocusedFileContentsLoader(loader, null)).toBeUndefined();
+  });
+});
+
+describe("didRevealRequestChange", () => {
+  it("detects a new chat reveal request", () => {
+    expect(didRevealRequestChange(3, 4)).toBe(true);
+    expect(didRevealRequestChange(4, 4)).toBe(false);
   });
 });
 

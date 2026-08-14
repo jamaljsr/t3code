@@ -42,6 +42,8 @@ import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollaps
 import {
   canExpandUnchanged,
   collapseAllExcept,
+  createFocusedFileContentsLoader,
+  didRevealRequestChange,
   firstHunkScrollTarget,
   shouldExpandUnchanged,
   toTurnDiffTreeFiles,
@@ -203,6 +205,7 @@ export default function DiffPanel({
   const selectedFilePath = diffSelection.kind === "turn" ? diffSelection.filePath : null;
   const selectedFileRevealRequestId =
     diffSelection.kind === "turn" ? diffSelection.revealRequestId : 0;
+  const previousSelectedFileRevealRequestIdRef = useRef(selectedFileRevealRequestId);
   const selectedTurn =
     selectedTurnId === null
       ? undefined
@@ -459,6 +462,10 @@ export default function DiffPanel({
     collapsedFileKeys: collapsedDiffFileKeys,
     fileKeys: diffFileKeys,
   });
+  const focusedLoadDiffFiles = useMemo(
+    () => createFocusedFileContentsLoader(loadDiffFiles, focusedFile?.fileDiff ?? null),
+    [focusedFile?.fileDiff, loadDiffFiles],
+  );
 
   const handleSelectTreeFile = useCallback(
     (path: string) => {
@@ -487,7 +494,12 @@ export default function DiffPanel({
   }, [codeViewMountKey, selectedDiffFileKey, selectedFileRevealRequestId]);
 
   useEffect(() => {
-    if (!treeFocus || !focusedFile) return;
+    const revealRequestChanged = didRevealRequestChange(
+      previousSelectedFileRevealRequestIdRef.current,
+      selectedFileRevealRequestId,
+    );
+    previousSelectedFileRevealRequestIdRef.current = selectedFileRevealRequestId;
+    if (revealRequestChanged || !treeFocus || !focusedFile) return;
     const target = firstHunkScrollTarget(focusedFile.fileDiff, focusedFile.fileKey);
     const scroll = () => codeViewRef.current?.scrollTo(target);
 
@@ -508,7 +520,14 @@ export default function DiffPanel({
     return () => {
       cancelled = true;
     };
-  }, [treeFocus, focusedFile, expandUnchanged, loadDiffFiles, codeViewMountKey]);
+  }, [
+    treeFocus,
+    focusedFile,
+    expandUnchanged,
+    loadDiffFiles,
+    codeViewMountKey,
+    selectedFileRevealRequestId,
+  ]);
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -1052,7 +1071,7 @@ export default function DiffPanel({
                       theme: resolveDiffThemeName(resolvedTheme),
                       themeType: resolvedTheme as DiffThemeType,
                       stickyHeaders: true,
-                      ...(loadDiffFiles ? { loadDiffFiles } : {}),
+                      ...(focusedLoadDiffFiles ? { loadDiffFiles: focusedLoadDiffFiles } : {}),
                       expandUnchanged,
                     }}
                   />
