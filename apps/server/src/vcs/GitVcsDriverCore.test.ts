@@ -16,7 +16,12 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { GitCommandError, type ReviewDiffFileContentsInput } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
-import { makeGitVcsDriverCore, splitNullSeparatedGitStdoutPaths } from "./GitVcsDriverCore.ts";
+import {
+  makeGitVcsDriverCore,
+  parseReviewDiffCommitLog,
+  REVIEW_DIFF_COMMIT_LIMIT,
+  splitNullSeparatedGitStdoutPaths,
+} from "./GitVcsDriverCore.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
@@ -761,6 +766,153 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
   });
 
   describe("review diff previews", () => {
+    const record = (
+      oid: string,
+      subject: string,
+      body: string,
+      authorName: string,
+      committedAt: string,
+    ) => `${oid}\0${subject}\0${body}\0${authorName}\0${committedAt}`;
+
+    describe("parseReviewDiffCommitLog", () => {
+      it.effect("keeps newest-first order and splits subject from body", () =>
+        Effect.sync(() => {
+          const stdout = [
+            record("aaa", "newest", "body a", "Ada", "2026-08-14T12:00:00-05:00"),
+            record("bbb", "oldest", "", "Ada", "2026-08-13T12:00:00-05:00"),
+          ].join("\x1e");
+
+          const parsed = parseReviewDiffCommitLog(stdout);
+          assert.strictEqual(parsed.commitsError, false);
+          assert.strictEqual(parsed.commitsTruncated, false);
+          assert.deepStrictEqual(
+            parsed.commits.map((commit) => commit.oid),
+            ["aaa", "bbb"],
+          );
+          assert.strictEqual(parsed.commits[0]?.body, "body a");
+          assert.strictEqual(parsed.commits[1]?.body, "");
+        }),
+      );
+
+      it.effect("returns 100 commits and marks truncation when 101 records arrive", () =>
+        Effect.sync(() => {
+          const records = Array.from({ length: REVIEW_DIFF_COMMIT_LIMIT + 1 }, (_, index) =>
+            record(
+              index.toString(16).padStart(40, "0"),
+              `subject ${index}`,
+              "",
+              "Ada",
+              "2026-08-14T12:00:00-05:00",
+            ),
+          );
+          const parsed = parseReviewDiffCommitLog(records.join("\x1e"));
+          assert.strictEqual(parsed.commits.length, REVIEW_DIFF_COMMIT_LIMIT);
+          assert.strictEqual(parsed.commitsTruncated, true);
+          assert.strictEqual(parsed.commits[0]?.subject, "subject 0");
+          assert.strictEqual(
+            parsed.commits.at(-1)?.subject,
+            `subject ${REVIEW_DIFF_COMMIT_LIMIT - 1}`,
+          );
+        }),
+      );
+
+      it.effect("skips a trailing empty record and incomplete fields", () =>
+        Effect.sync(() => {
+          const stdout = `${record("aaa", "ok", "", "Ada", "2026-08-14T12:00:00-05:00")}\x1eincomplete\x1e`;
+          const parsed = parseReviewDiffCommitLog(stdout);
+          assert.deepStrictEqual(
+            parsed.commits.map((commit) => commit.oid),
+            ["aaa"],
+          );
+        }),
+      );
+
+      it.effect("trims leading newlines that git log inserts after record separators", () =>
+        Effect.sync(() => {
+          const stdout = `${record("aaa", "newest", "body a", "Ada", "2026-08-14T12:00:00-05:00")}\x1e\n${record("bbb", "oldest", "", "Ada", "2026-08-13T12:00:00-05:00")}\x1e\n`;
+          const parsed = parseReviewDiffCommitLog(stdout);
+          assert.deepStrictEqual(
+            parsed.commits.map((commit) => commit.oid),
+            ["aaa", "bbb"],
+          );
+          for (const commit of parsed.commits) {
+            assert.notInclude(commit.oid, "\n");
+          }
+        }),
+      );
+    });
+
+    it.effect("attaches newest-first commits to the branch-range source only", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["checkout", "-b", "feature/commits"]);
+        yield* writeTextFile(cwd, "one.ts", "export const one = 1;\n");
+        yield* git(cwd, ["add", "one.ts"]);
+        yield* git(cwd, ["commit", "-m", "add one\n\nFirst body."]);
+        yield* writeTextFile(cwd, "two.ts", "export const two = 2;\n");
+        yield* git(cwd, ["add", "two.ts"]);
+        yield* git(cwd, ["commit", "-m", "add two"]);
+
+        const preview = yield* driver.getReviewDiffPreview({
+          cwd,
+          baseRef: initialBranch,
+        });
+        const workingTree = preview.sources.find((source) => source.kind === "working-tree");
+        const branchRange = preview.sources.find((source) => source.kind === "branch-range");
+
+        assert.isUndefined(workingTree?.commits);
+        assert.deepStrictEqual(
+          branchRange?.commits?.map((commit) => commit.subject),
+          ["add two", "add one"],
+        );
+        assert.strictEqual(branchRange?.commits?.[1]?.body.trim(), "First body.");
+        assert.strictEqual(branchRange?.commitsTruncated, false);
+        assert.strictEqual(branchRange?.commitsError, false);
+        assert.isNotEmpty(branchRange?.diff);
+      }),
+    );
+
+    it.effect("returns an empty commit list when no base ref is available", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const head = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* git(cwd, ["checkout", "--detach", head]);
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd });
+        const branchRange = preview.sources.find((source) => source.kind === "branch-range");
+
+        assert.strictEqual(preview.sources.length, 2);
+        assert.deepStrictEqual(branchRange?.commits, []);
+        assert.strictEqual(branchRange?.commitsTruncated, false);
+        assert.strictEqual(branchRange?.commitsError, false);
+      }),
+    );
+
+    it.effect("keeps diffs when git log fails", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "README.md", "# dirty\n");
+
+        const preview = yield* driver.getReviewDiffPreview({
+          cwd,
+          baseRef: "definitely-missing-ref",
+        });
+        const workingTree = preview.sources.find((source) => source.kind === "working-tree");
+        const branchRange = preview.sources.find((source) => source.kind === "branch-range");
+
+        assert.isNotEmpty(workingTree?.diff);
+        assert.deepStrictEqual(branchRange?.commits, []);
+        assert.strictEqual(branchRange?.commitsTruncated, false);
+        assert.strictEqual(branchRange?.commitsError, true);
+      }),
+    );
+
     it.effect("drops an unterminated path from truncated NUL-separated git output", () =>
       Effect.sync(() => {
         const paths = splitNullSeparatedGitStdoutPaths({
