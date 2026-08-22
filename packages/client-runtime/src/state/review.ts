@@ -37,5 +37,25 @@ export function createReviewEnvironmentAtoms<R, E>(
           ]),
       },
     }),
+    diffFilePatch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:review:diff-file-patch",
+      tag: WS_METHODS.reviewGetDiffFilePatch,
+      scheduler: diffFileScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([
+            environmentId,
+            input.cwd,
+            input.sourceKind,
+            input.baseRef,
+            input.headRef,
+            input.oldPath,
+            input.newPath,
+            input.changeType,
+            input.ignoreWhitespace === true,
+          ]),
+      },
+    }),
   };
 }
