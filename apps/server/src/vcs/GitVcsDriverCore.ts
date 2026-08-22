@@ -1,4 +1,3 @@
-import * as Arr from "effect/Array";
 import * as Cache from "effect/Cache";
 import * as Data from "effect/Data";
 import * as Crypto from "effect/Crypto";
@@ -37,6 +36,7 @@ import {
   parseRemoteRefWithRemoteNames,
 } from "../git/remoteRefs.ts";
 import { ServerConfig } from "../config.ts";
+import { buildReviewDiffManifest } from "../review/reviewDiffManifest.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
@@ -46,9 +46,7 @@ const RANGE_COMMIT_SUMMARY_MAX_OUTPUT_BYTES = 19_000;
 const RANGE_DIFF_SUMMARY_MAX_OUTPUT_BYTES = 19_000;
 const RANGE_DIFF_PATCH_MAX_OUTPUT_BYTES = 59_000;
 const REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES = 120_000;
-const REVIEW_UNTRACKED_DIFF_MAX_OUTPUT_BYTES = 80_000;
 const REVIEW_DIFF_FILE_MAX_OUTPUT_BYTES = 1024 * 1024;
-const WORKSPACE_FILES_MAX_OUTPUT_BYTES = 120_000;
 const STATUS_UPSTREAM_REFRESH_INTERVAL = Duration.seconds(15);
 const STATUS_UPSTREAM_REFRESH_TIMEOUT = Duration.seconds(5);
 
@@ -2128,56 +2126,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     };
   });
 
-  const readUntrackedReviewDiffs = Effect.fn("readUntrackedReviewDiffs")(function* (cwd: string) {
-    const untrackedResult = yield* executeGit(
-      "GitVcsDriver.readUntrackedReviewDiffs.list",
-      cwd,
-      ["ls-files", "--others", "--exclude-standard", "-z"],
-      {
-        maxOutputBytes: WORKSPACE_FILES_MAX_OUTPUT_BYTES,
-        appendTruncationMarker: true,
-      },
-    );
-    const untrackedPaths = splitNullSeparatedGitStdoutPaths(untrackedResult);
-    if (untrackedPaths.length === 0) {
-      return { diff: "", truncated: untrackedResult.stdoutTruncated };
-    }
-
-    const diffs = yield* Effect.forEach(
-      untrackedPaths,
-      (relativePath) =>
-        executeGit(
-          "GitVcsDriver.readUntrackedReviewDiffs.diff",
-          cwd,
-          [
-            "diff",
-            "--no-index",
-            "--patch",
-            "--no-color",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--minimal",
-            "--",
-            "/dev/null",
-            relativePath,
-          ],
-          {
-            allowNonZeroExit: true,
-            maxOutputBytes: REVIEW_UNTRACKED_DIFF_MAX_OUTPUT_BYTES,
-            appendTruncationMarker: true,
-          },
-        ),
-      { concurrency: 4 },
-    );
-
-    return {
-      diff: Arr.filterMap(diffs, (result) =>
-        result.stdout.trim().length > 0 ? Result.succeed(result.stdout) : Result.failVoid,
-      ).join("\n"),
-      truncated: untrackedResult.stdoutTruncated || diffs.some((result) => result.stdoutTruncated),
-    };
-  });
-
   const getReviewDiffPreview = Effect.fn("getReviewDiffPreview")(function* (
     input: ReviewDiffPreviewInput,
   ) {
@@ -2206,6 +2154,20 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       stdoutTruncated: false,
       stderrTruncated: false,
     };
+    const ignoreWhitespace = input.ignoreWhitespace === true;
+    const whitespaceArgs = ignoreWhitespace ? ["--ignore-all-space"] : [];
+    const listingOptions = {
+      maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
+      appendTruncationMarker: true,
+    } as const;
+    const listingEffect = (operation: string, args: readonly string[]) =>
+      executeGit(operation, input.cwd, args, listingOptions).pipe(
+        Effect.orElseSucceed(() => emptyGitResult),
+      );
+    const stripListingStdout = (stdout: string) =>
+      stdout.endsWith(OUTPUT_TRUNCATED_MARKER)
+        ? stdout.slice(0, -OUTPUT_TRUNCATED_MARKER.length)
+        : stdout;
     const commitLogEffect = baseRef
       ? executeGit(
           "GitVcsDriver.getReviewDiffPreview.log",
@@ -2235,75 +2197,126 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           })),
         )
       : Effect.succeed(emptyReviewDiffCommitLog);
-    const [dirtyTrackedResult, dirtyUntracked, baseResult, commitLog] = yield* Effect.all(
+    const [
+      workingTreeNameStatus,
+      workingTreeNumstat,
+      workingTreeUntracked,
+      branchRangeNameStatus,
+      branchRangeNumstat,
+      commitLog,
+    ] = yield* Effect.all(
       [
-        executeGit(
-          "GitVcsDriver.getReviewDiffPreview.dirtyTracked",
-          input.cwd,
-          [
-            "diff",
-            "--patch",
-            "--no-color",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--minimal",
-            ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
-            "HEAD",
-            "--",
-          ],
-          {
-            maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
-            appendTruncationMarker: true,
-          },
-        ).pipe(Effect.orElseSucceed(() => emptyGitResult)),
-        readUntrackedReviewDiffs(input.cwd).pipe(
-          Effect.orElseSucceed(() => ({ diff: "", truncated: false })),
-        ),
+        listingEffect("GitVcsDriver.getReviewDiffPreview.workingTree.nameStatus", [
+          "diff",
+          "--name-status",
+          ...whitespaceArgs,
+          "HEAD",
+          "--",
+        ]),
+        listingEffect("GitVcsDriver.getReviewDiffPreview.workingTree.numstat", [
+          "diff",
+          "--numstat",
+          ...whitespaceArgs,
+          "HEAD",
+          "--",
+        ]),
+        listingEffect("GitVcsDriver.getReviewDiffPreview.workingTree.untracked", [
+          "ls-files",
+          "--others",
+          "--exclude-standard",
+          "-z",
+        ]),
         baseRef && branch
-          ? executeGit(
-              "GitVcsDriver.getReviewDiffPreview.base",
-              input.cwd,
-              [
-                "diff",
-                "--patch",
-                "--no-color",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--minimal",
-                ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
-                `${baseRef}...HEAD`,
-              ],
-              {
-                maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
-                appendTruncationMarker: true,
-              },
-            ).pipe(Effect.orElseSucceed(() => emptyGitResult))
-          : Effect.succeed(null),
+          ? listingEffect("GitVcsDriver.getReviewDiffPreview.branchRange.nameStatus", [
+              "diff",
+              "--name-status",
+              ...whitespaceArgs,
+              `${baseRef}...HEAD`,
+            ])
+          : Effect.succeed(emptyGitResult),
+        baseRef && branch
+          ? listingEffect("GitVcsDriver.getReviewDiffPreview.branchRange.numstat", [
+              "diff",
+              "--numstat",
+              ...whitespaceArgs,
+              `${baseRef}...HEAD`,
+            ])
+          : Effect.succeed(emptyGitResult),
         commitLogEffect,
       ],
       { concurrency: "unbounded" },
     );
-    const dirtyDiff = [dirtyTrackedResult.stdout.trimEnd(), dirtyUntracked.diff.trimEnd()]
-      .filter((diff) => diff.length > 0)
-      .join("\n");
-    const baseDiff = baseResult?.stdout ?? "";
-    const hashDiff = (diff: string) =>
-      crypto.digest("SHA-256", new TextEncoder().encode(diff)).pipe(
-        Effect.map(Encoding.encodeHex),
-        Effect.mapError(
-          (cause) =>
-            new GitCommandError({
-              operation: "GitVcsDriver.getReviewDiffPreview.hash",
-              command: "crypto.digest SHA-256",
-              cwd: input.cwd,
-              detail: "Failed to hash review diff.",
-              cause,
+    const workingTreeManifest = buildReviewDiffManifest({
+      nameStatus: stripListingStdout(workingTreeNameStatus.stdout),
+      numstat: stripListingStdout(workingTreeNumstat.stdout),
+      untrackedPaths: splitNullSeparatedGitStdoutPaths({
+        stdout: stripListingStdout(workingTreeUntracked.stdout),
+        stdoutTruncated: workingTreeUntracked.stdoutTruncated,
+      }),
+      listingTruncated:
+        workingTreeNameStatus.stdoutTruncated ||
+        workingTreeNumstat.stdoutTruncated ||
+        workingTreeUntracked.stdoutTruncated,
+    });
+    const branchRangeManifest = buildReviewDiffManifest({
+      nameStatus: stripListingStdout(branchRangeNameStatus.stdout),
+      numstat: stripListingStdout(branchRangeNumstat.stdout),
+      untrackedPaths: [],
+      listingTruncated: branchRangeNameStatus.stdoutTruncated || branchRangeNumstat.stdoutTruncated,
+    });
+    // `--name-status --ignore-all-space` still lists whitespace-only files; `--numstat` omits them.
+    const filesAfterWhitespaceIgnore = (
+      files: ReviewDiffPreviewSource["files"],
+    ): ReviewDiffPreviewSource["files"] =>
+      ignoreWhitespace
+        ? files.filter(
+            (file) =>
+              file.changeType !== "change" ||
+              file.binary ||
+              file.additions !== null ||
+              file.deletions !== null,
+          )
+        : files;
+    const workingTreeFiles = filesAfterWhitespaceIgnore(workingTreeManifest.files);
+    const branchRangeFiles = filesAfterWhitespaceIgnore(branchRangeManifest.files);
+    const hashManifest = (
+      kind: ReviewDiffPreviewSource["kind"],
+      sourceBaseRef: string | null,
+      sourceHeadRef: string | null,
+      files: ReviewDiffPreviewSource["files"],
+    ) =>
+      crypto
+        .digest(
+          "SHA-256",
+          new TextEncoder().encode(
+            JSON.stringify({
+              kind,
+              baseRef: sourceBaseRef,
+              headRef: sourceHeadRef,
+              ignoreWhitespace,
+              files,
             }),
-        ),
-      );
+          ),
+        )
+        .pipe(
+          Effect.map(Encoding.encodeHex),
+          Effect.mapError(
+            (cause) =>
+              new GitCommandError({
+                operation: "GitVcsDriver.getReviewDiffPreview.hash",
+                command: "crypto.digest SHA-256",
+                cwd: input.cwd,
+                detail: "Failed to hash review diff.",
+                cause,
+              }),
+          ),
+        );
+    const workingTreeBaseRef = "HEAD";
+    const workingTreeHeadRef = null;
+    const branchRangeHeadRef = branch ?? "HEAD";
     const [dirtyDiffHash, baseDiffHash] = yield* Effect.all([
-      hashDiff(dirtyDiff),
-      hashDiff(baseDiff),
+      hashManifest("working-tree", workingTreeBaseRef, workingTreeHeadRef, workingTreeFiles),
+      hashManifest("branch-range", baseRef, branchRangeHeadRef, branchRangeFiles),
     ]);
 
     const sources: ReviewDiffPreviewSource[] = [
@@ -2311,21 +2324,21 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         id: "working-tree",
         kind: "working-tree",
         title: "Dirty worktree",
-        baseRef: "HEAD",
-        headRef: null,
-        diff: dirtyDiff,
+        baseRef: workingTreeBaseRef,
+        headRef: workingTreeHeadRef,
+        files: workingTreeFiles,
         diffHash: dirtyDiffHash,
-        truncated: dirtyTrackedResult.stdoutTruncated || dirtyUntracked.truncated,
+        truncated: workingTreeManifest.truncated,
       },
       {
         id: "branch-range",
         kind: "branch-range",
         title: baseRef ? `Against ${baseRef}` : "Against base branch",
         baseRef,
-        headRef: branch ?? "HEAD",
-        diff: baseDiff,
+        headRef: branchRangeHeadRef,
+        files: branchRangeFiles,
         diffHash: baseDiffHash,
-        truncated: baseResult?.stdoutTruncated ?? false,
+        truncated: branchRangeManifest.truncated,
         commits: commitLog.commits,
         commitsTruncated: commitLog.commitsTruncated,
         commitsError: commitLog.commitsError,

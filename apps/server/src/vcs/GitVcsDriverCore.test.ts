@@ -16,6 +16,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { GitCommandError, type ReviewDiffFileContentsInput } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
+import { buildReviewDiffManifest } from "../review/reviewDiffManifest.ts";
 import {
   makeGitVcsDriverCore,
   parseReviewDiffCommitLog,
@@ -870,7 +871,14 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         assert.strictEqual(branchRange?.commits?.[1]?.body.trim(), "First body.");
         assert.strictEqual(branchRange?.commitsTruncated, false);
         assert.strictEqual(branchRange?.commitsError, false);
-        assert.isNotEmpty(branchRange?.diff);
+        assert.isNotEmpty(branchRange?.files);
+        assert.deepStrictEqual(
+          branchRange?.files.map((file) => ({ path: file.path, changeType: file.changeType })),
+          [
+            { path: "one.ts", changeType: "new" },
+            { path: "two.ts", changeType: "new" },
+          ],
+        );
       }),
     );
 
@@ -906,7 +914,8 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         const workingTree = preview.sources.find((source) => source.kind === "working-tree");
         const branchRange = preview.sources.find((source) => source.kind === "branch-range");
 
-        assert.isNotEmpty(workingTree?.diff);
+        assert.isNotEmpty(workingTree?.files);
+        assert.strictEqual(workingTree?.files[0]?.path, "README.md");
         assert.deepStrictEqual(branchRange?.commits, []);
         assert.strictEqual(branchRange?.commitsTruncated, false);
         assert.strictEqual(branchRange?.commitsError, true);
@@ -957,16 +966,56 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
           ignoreWhitespace: true,
         });
 
-        assert.isNotEmpty(included.sources.find((source) => source.kind === "working-tree")?.diff);
-        assert.isNotEmpty(included.sources.find((source) => source.kind === "branch-range")?.diff);
-        assert.strictEqual(
-          ignored.sources.find((source) => source.kind === "working-tree")?.diff,
-          "",
+        const includedWorkingTree = included.sources.find(
+          (source) => source.kind === "working-tree",
         );
-        assert.strictEqual(
-          ignored.sources.find((source) => source.kind === "branch-range")?.diff,
-          "",
+        const includedBranchRange = included.sources.find(
+          (source) => source.kind === "branch-range",
         );
+        const ignoredWorkingTree = ignored.sources.find((source) => source.kind === "working-tree");
+        const ignoredBranchRange = ignored.sources.find((source) => source.kind === "branch-range");
+
+        assert.ok(includedWorkingTree?.files.some((file) => file.path === "README.md"));
+        assert.ok(includedBranchRange?.files.some((file) => file.path === "README.md"));
+        assert.ok(!ignoredWorkingTree?.files.some((file) => file.path === "README.md"));
+        assert.ok(!ignoredBranchRange?.files.some((file) => file.path === "README.md"));
+      }),
+    );
+
+    it.effect("includes untracked worktree files as new without a patch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "scratch.ts", "export const scratch = 1;\n");
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd });
+        const workingTree = preview.sources.find((source) => source.kind === "working-tree");
+        const scratch = workingTree?.files.find((file) => file.path === "scratch.ts");
+
+        assert.deepStrictEqual(scratch, {
+          path: "scratch.ts",
+          oldPath: null,
+          changeType: "new",
+          additions: null,
+          deletions: null,
+          binary: false,
+        });
+        assert.isUndefined((workingTree as { diff?: unknown } | undefined)?.diff);
+      }),
+    );
+
+    it.effect("marks a preview source truncated when a listing was cut", () =>
+      Effect.sync(() => {
+        const manifest = buildReviewDiffManifest({
+          nameStatus: "M\tREADME.md",
+          numstat: "1\t1\tREADME.md",
+          untrackedPaths: [],
+          listingTruncated: true,
+        });
+
+        assert.strictEqual(manifest.truncated, true);
+        assert.strictEqual(manifest.files[0]?.path, "README.md");
       }),
     );
 

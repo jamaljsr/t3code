@@ -5292,7 +5292,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                     title: "Dirty worktree",
                     baseRef: "HEAD",
                     headRef: null,
-                    diff: "dirty-diff",
+                    files: [],
                     diffHash: "hash-dirty",
                     truncated: false,
                   },
@@ -5302,7 +5302,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                     title: "Against main",
                     baseRef: "main",
                     headRef: "feature/demo",
-                    diff: "base-diff",
+                    files: [],
                     diffHash: "hash-base",
                     truncated: false,
                   },
@@ -5426,7 +5426,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           client[WS_METHODS.reviewGetDiffPreview]({ cwd: "/tmp/repo" }),
         ),
       );
-      assert.equal(diffPreview.sources[0]?.diff, "dirty-diff");
+      assert.deepEqual(diffPreview.sources[0]?.files, []);
 
       const diffFileContents = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
