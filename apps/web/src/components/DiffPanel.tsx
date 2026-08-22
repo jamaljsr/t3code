@@ -341,6 +341,7 @@ export default function DiffPanel({
     readonly displayedFile: {
       readonly threadKey: string | null;
       readonly sourceId: string;
+      readonly diffHash: string;
       readonly diff: string;
       readonly oldContents: string;
       readonly newContents: string;
@@ -724,6 +725,7 @@ export default function DiffPanel({
       previewCwd === undefined ||
       selectedGitSourceId === null ||
       selectedGitSourceKind === undefined ||
+      selectedGitSourceDiffHash === null ||
       selectedGitFilePath === null ||
       selectedGitFileChangeType === undefined
     ) {
@@ -747,11 +749,11 @@ export default function DiffPanel({
     }
 
     const requestId = ++gitFileLoadRequestIdRef.current;
-    void selectedGitSourceDiffHash;
     const newPath = selectedGitFilePath;
     const oldPath = selectedGitFileOldPath ?? selectedGitFilePath;
     const changeType = selectedGitFileChangeType;
     const sourceId = selectedGitSourceId;
+    const sourceDiffHash = selectedGitSourceDiffHash;
     const threadKey = activeThreadRefreshKey;
     setGitFilePane((current) => ({
       ...current,
@@ -818,6 +820,7 @@ export default function DiffPanel({
         displayedFile: {
           threadKey,
           sourceId,
+          diffHash: sourceDiffHash,
           diff: resolved.diff,
           oldContents: resolved.oldContents,
           newContents: resolved.newContents,
@@ -856,8 +859,7 @@ export default function DiffPanel({
     ) {
       return undefined;
     }
-    const diffHash = selectedGitSource.diffHash;
-    const { oldContents, newContents } = displayedFile;
+    const { diffHash, oldContents, newContents } = displayedFile;
     return async (fileDiff) => {
       const newPath = resolveFileDiffPath(fileDiff);
       const oldPath = fileDiff.prevName
