@@ -2543,33 +2543,34 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       ...whitespaceArgs,
     ];
 
+    const repositoryRoot = yield* runGitStdout(
+      "GitVcsDriver.getReviewDiffFilePatch.repositoryRoot",
+      input.cwd,
+      ["rev-parse", "--show-toplevel"],
+    ).pipe(Effect.map((value) => value.trim()));
+    if (repositoryRoot.length === 0) {
+      return yield* reviewDiffFilePatchError(input, "Could not resolve the Git repository root.");
+    }
+    const requestedPath = path.resolve(repositoryRoot, pathspec);
+    if (!isPathWithinRoot(repositoryRoot, requestedPath)) {
+      return yield* reviewDiffFilePatchError(
+        input,
+        `Diff file '${pathspec}' resolves outside the review workspace.`,
+      );
+    }
+
     if (input.sourceKind === "working-tree") {
-      const repositoryRoot = yield* runGitStdout(
-        "GitVcsDriver.getReviewDiffFilePatch.repositoryRoot",
-        input.cwd,
-        ["rev-parse", "--show-toplevel"],
-      ).pipe(Effect.map((value) => value.trim()));
-      if (repositoryRoot.length === 0) {
-        return yield* reviewDiffFilePatchError(input, "Could not resolve the Git repository root.");
-      }
-      const requestedPath = path.resolve(repositoryRoot, pathspec);
-      if (!isPathWithinRoot(repositoryRoot, requestedPath)) {
-        return yield* reviewDiffFilePatchError(
-          input,
-          `Diff file '${pathspec}' resolves outside the review workspace.`,
-        );
-      }
       const result =
         input.changeType === "new"
           ? yield* executeGit(
               "GitVcsDriver.getReviewDiffFilePatch.workingTree.new",
-              input.cwd,
+              repositoryRoot,
               ["diff", "--no-index", ...patchArgs, "--", "/dev/null", input.newPath],
               { ...patchOptions, allowNonZeroExit: true },
             )
           : yield* executeGit(
               "GitVcsDriver.getReviewDiffFilePatch.workingTree",
-              input.cwd,
+              repositoryRoot,
               ["diff", ...patchArgs, "HEAD", "--", pathspec],
               patchOptions,
             );
@@ -2587,7 +2588,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
     const mergeBase = yield* runGitStdout(
       "GitVcsDriver.getReviewDiffFilePatch.mergeBase",
-      input.cwd,
+      repositoryRoot,
       ["merge-base", input.baseRef, input.headRef],
     ).pipe(Effect.map((value) => value.trim()));
     if (mergeBase.length === 0) {
@@ -2598,7 +2599,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
     const result = yield* executeGit(
       "GitVcsDriver.getReviewDiffFilePatch.branchRange",
-      input.cwd,
+      repositoryRoot,
       ["diff", ...patchArgs, mergeBase, input.headRef, "--", pathspec],
       patchOptions,
     );

@@ -1144,6 +1144,57 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("returns a one-file working-tree patch from a nested cwd", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const pathService = yield* Path.Path;
+        yield* writeTextFile(cwd, "nested/.keep", "");
+        yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+        const result = yield* driver.getReviewDiffFilePatch({
+          cwd: pathService.join(cwd, "nested"),
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+        });
+
+        assert.include(result.diff, "README.md");
+        assert.include(result.diff, "+# changed");
+        assert.strictEqual(result.truncated, false);
+      }),
+    );
+
+    it.effect("rejects a review file patch path outside the repository root", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        const error = yield* driver
+          .getReviewDiffFilePatch({
+            cwd,
+            sourceKind: "working-tree",
+            changeType: "change",
+            baseRef: "HEAD",
+            headRef: null,
+            oldPath: "../outside",
+            newPath: "../outside",
+          })
+          .pipe(Effect.flip);
+
+        assert.deepInclude(error, {
+          _tag: "GitCommandError",
+          operation: "GitVcsDriver.getReviewDiffFilePatch",
+          detail: "Diff file '../outside' resolves outside the review workspace.",
+        });
+      }),
+    );
+
     it.effect("honors ignoreWhitespace on a one-file patch", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
