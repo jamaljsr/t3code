@@ -1119,6 +1119,110 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         assert.strictEqual(contents.newContents, "# branch change\nunchanged context\n");
       }),
     );
+
+    it.effect("returns a one-file working-tree patch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+        const result = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+        });
+
+        assert.include(result.diff, "README.md");
+        assert.include(result.diff, "+# changed");
+        assert.strictEqual(result.truncated, false);
+      }),
+    );
+
+    it.effect("honors ignoreWhitespace on a one-file patch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "README.md", "#  test\n");
+
+        const included = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+          ignoreWhitespace: false,
+        });
+        const ignored = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+          ignoreWhitespace: true,
+        });
+
+        assert.isNotEmpty(included.diff);
+        assert.strictEqual(ignored.diff.trim(), "");
+      }),
+    );
+
+    it.effect("returns a one-file branch-range patch against the merge base", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["checkout", "-b", "feature/patch"]);
+        yield* writeTextFile(cwd, "README.md", "# branch\n");
+        yield* git(cwd, ["add", "README.md"]);
+        yield* git(cwd, ["commit", "-m", "change"]);
+
+        const result = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "branch-range",
+          changeType: "change",
+          baseRef: initialBranch,
+          headRef: "feature/patch",
+          oldPath: "README.md",
+          newPath: "README.md",
+        });
+
+        assert.include(result.diff, "+# branch");
+        assert.strictEqual(result.truncated, false);
+      }),
+    );
+
+    it.effect("returns a one-file patch for an untracked working-tree file", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "scratch.ts", "export const scratch = true;\n");
+
+        const result = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "new",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "scratch.ts",
+          newPath: "scratch.ts",
+        });
+
+        assert.include(result.diff, "scratch.ts");
+        assert.include(result.diff, "+export const scratch = true;");
+        assert.strictEqual(result.truncated, false);
+      }),
+    );
   });
 
   describe("repository status", () => {

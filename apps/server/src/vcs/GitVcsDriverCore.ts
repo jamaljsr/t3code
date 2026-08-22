@@ -21,6 +21,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
   GitCommandError,
   type ReviewDiffFileContentsInput,
+  type ReviewDiffFilePatchInput,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewSource,
   type VcsRef,
@@ -2509,6 +2510,91 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return { oldContents, newContents };
   });
 
+  const reviewDiffFilePatchError = (input: ReviewDiffFilePatchInput, detail: string) =>
+    new GitCommandError({
+      operation: "GitVcsDriver.getReviewDiffFilePatch",
+      command: "git",
+      cwd: input.cwd,
+      detail,
+    });
+
+  const getReviewDiffFilePatch = Effect.fn("getReviewDiffFilePatch")(function* (
+    input: ReviewDiffFilePatchInput,
+  ) {
+    const whitespaceArgs = input.ignoreWhitespace === true ? ["--ignore-all-space"] : [];
+    const pathspec = input.changeType === "deleted" ? input.oldPath : input.newPath;
+    const patchOptions = {
+      maxOutputBytes: REVIEW_DIFF_FILE_MAX_OUTPUT_BYTES,
+      appendTruncationMarker: true,
+    } as const;
+    const patchArgs = [
+      "--patch",
+      "--no-color",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--minimal",
+      ...whitespaceArgs,
+    ];
+
+    if (input.sourceKind === "working-tree") {
+      const repositoryRoot = yield* runGitStdout(
+        "GitVcsDriver.getReviewDiffFilePatch.repositoryRoot",
+        input.cwd,
+        ["rev-parse", "--show-toplevel"],
+      ).pipe(Effect.map((value) => value.trim()));
+      if (repositoryRoot.length === 0) {
+        return yield* reviewDiffFilePatchError(input, "Could not resolve the Git repository root.");
+      }
+      const requestedPath = path.resolve(repositoryRoot, pathspec);
+      if (!isPathWithinRoot(repositoryRoot, requestedPath)) {
+        return yield* reviewDiffFilePatchError(
+          input,
+          `Diff file '${pathspec}' resolves outside the review workspace.`,
+        );
+      }
+      const result =
+        input.changeType === "new"
+          ? yield* executeGit(
+              "GitVcsDriver.getReviewDiffFilePatch.workingTree.new",
+              input.cwd,
+              ["diff", "--no-index", ...patchArgs, "--", "/dev/null", input.newPath],
+              { ...patchOptions, allowNonZeroExit: true },
+            )
+          : yield* executeGit(
+              "GitVcsDriver.getReviewDiffFilePatch.workingTree",
+              input.cwd,
+              ["diff", ...patchArgs, "HEAD", "--", pathspec],
+              patchOptions,
+            );
+      return { diff: result.stdout, truncated: result.stdoutTruncated };
+    }
+
+    if (!input.baseRef || !input.headRef) {
+      return yield* reviewDiffFilePatchError(
+        input,
+        "Branch diff file expansion requires both base and head refs.",
+      );
+    }
+    const mergeBase = yield* runGitStdout(
+      "GitVcsDriver.getReviewDiffFilePatch.mergeBase",
+      input.cwd,
+      ["merge-base", input.baseRef, input.headRef],
+    ).pipe(Effect.map((value) => value.trim()));
+    if (mergeBase.length === 0) {
+      return yield* reviewDiffFilePatchError(
+        input,
+        "Could not resolve the branch comparison base.",
+      );
+    }
+    const result = yield* executeGit(
+      "GitVcsDriver.getReviewDiffFilePatch.branchRange",
+      input.cwd,
+      ["diff", ...patchArgs, mergeBase, input.headRef, "--", pathspec],
+      patchOptions,
+    );
+    return { diff: result.stdout, truncated: result.stdoutTruncated };
+  });
+
   const readConfigValue: GitVcsDriver.GitVcsDriver["Service"]["readConfigValue"] = (cwd, key) =>
     runGitStdout("GitVcsDriver.readConfigValue", cwd, ["config", "--get", key], true).pipe(
       Effect.map((stdout) => stdout.trim()),
@@ -3143,6 +3229,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     readRangeContext,
     getReviewDiffPreview,
     getReviewDiffFileContents,
+    getReviewDiffFilePatch,
     readConfigValue,
     listRefs,
     createWorktree: (input) => withListRefsInvalidation(input.cwd, createWorktree(input)),

@@ -1944,6 +1944,10 @@ const makeWsRpcLayer = (
             review.getDiffFileContents(input),
             { "rpc.aggregate": "review" },
           ),
+        [WS_METHODS.reviewGetDiffFilePatch]: (input) =>
+          observeRpcEffect(WS_METHODS.reviewGetDiffFilePatch, review.getDiffFilePatch(input), {
+            "rpc.aggregate": "review",
+          }),
         [WS_METHODS.terminalOpen]: (input) =>
           observeRpcEffect(WS_METHODS.terminalOpen, terminalManager.open(input), {
             "rpc.aggregate": "terminal",
