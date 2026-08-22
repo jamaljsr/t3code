@@ -11,6 +11,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Orchestration](#orchestration)
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
+- [Review](#review)
 
 ## Concepts
 
@@ -139,6 +140,12 @@ The patch difference between two checkpoints. Query logic lives in [CheckpointDi
 #### Turn diff
 
 The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4].
+
+### Review
+
+#### Diff preview
+
+The live working-tree / branch review payload. It is a file list plus stats (`review.getDiffPreview`), not a unified patch. One file's patch is `review.getDiffFilePatch`; unchanged lines are filled from `review.getDiffFileContents`. Turn diffs still use the checkpoint patch RPC.
 
 ## Practical Shortcuts
 
