@@ -19,7 +19,10 @@ function resolveNumstatNewPath(rawPath: string): string {
   const braced = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(rawPath);
   if (braced) {
     const [, prefix = "", , to = "", suffix = ""] = braced;
-    const resolved = `${prefix}${to}${suffix}`;
+    const resolved =
+      to.length === 0 && prefix.endsWith("/") && suffix.startsWith("/")
+        ? `${prefix}${suffix.slice(1)}`
+        : `${prefix}${to}${suffix}`;
     return resolved.length > 0 ? resolved : rawPath;
   }
   const arrow = rawPath.indexOf(" => ");

@@ -130,4 +130,36 @@ describe("buildReviewDiffManifest", () => {
       deletions: null,
     });
   });
+
+  it("collapses empty-to braced numstat flatten renames", () => {
+    const files = buildReviewDiffManifest({
+      nameStatus: "R100\tnested/old/file.ts\tnested/file.ts",
+      numstat: "0\t0\tnested/{old => }/file.ts",
+      untrackedPaths: [],
+      listingTruncated: false,
+    });
+    expect(files.files[0]).toMatchObject({
+      path: "nested/file.ts",
+      oldPath: "nested/old/file.ts",
+      changeType: "rename-pure",
+      additions: 0,
+      deletions: 0,
+    });
+  });
+
+  it("resolves empty-from braced numstat directory insertions", () => {
+    const files = buildReviewDiffManifest({
+      nameStatus: "R80\tsrc/file.ts\tsrc/new/file.ts",
+      numstat: "3\t1\tsrc/{ => new}/file.ts",
+      untrackedPaths: [],
+      listingTruncated: false,
+    });
+    expect(files.files[0]).toMatchObject({
+      path: "src/new/file.ts",
+      oldPath: "src/file.ts",
+      changeType: "rename-changed",
+      additions: 3,
+      deletions: 1,
+    });
+  });
 });
