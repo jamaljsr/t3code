@@ -1,8 +1,8 @@
-type GitFilePatchResult =
+export type GitFilePatchResult =
   | { readonly ok: true; readonly diff: string }
   | { readonly ok: false; readonly error: string };
 
-type GitFileContentsResult =
+export type GitFileContentsResult =
   | { readonly ok: true; readonly oldContents: string; readonly newContents: string }
   | { readonly ok: false; readonly error: string };
 

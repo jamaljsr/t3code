@@ -57,4 +57,20 @@ describe("DiffFileTree", () => {
     );
     expect(markup).toContain("File list truncated");
   });
+
+  it("marks only the loadingPath row as busy", () => {
+    const markup = renderToStaticMarkup(
+      <DiffFileTree
+        files={NESTED_FILES}
+        allDirectoriesExpanded
+        resolvedTheme="light"
+        selectedPath="apps/web/src/main.ts"
+        loadingPath="apps/web/src/main.ts"
+        onSelectFile={() => {}}
+      />,
+    );
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup).toContain("Loading");
+    expect(markup.match(/aria-busy="true"/g)?.length).toBe(1);
+  });
 });

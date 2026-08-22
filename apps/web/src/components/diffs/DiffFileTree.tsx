@@ -6,6 +6,7 @@ import { buildTurnDiffTree, type TurnDiffTreeNode } from "../../lib/turnDiffTree
 import type { TurnDiffFileChange } from "../../types";
 import { DiffStatLabel, hasNonZeroStat } from "../chat/DiffStatLabel";
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
+import { Spinner } from "../ui/spinner";
 
 const EMPTY_DIRECTORY_OVERRIDES: Record<string, boolean> = {};
 
@@ -14,6 +15,7 @@ export const DiffFileTree = memo(function DiffFileTree(props: {
   allDirectoriesExpanded?: boolean;
   resolvedTheme: "light" | "dark";
   selectedPath?: string;
+  loadingPath?: string;
   truncated?: boolean;
   onSelectFile: (path: string) => void;
 }) {
@@ -23,6 +25,7 @@ export const DiffFileTree = memo(function DiffFileTree(props: {
     onSelectFile,
     resolvedTheme,
     selectedPath,
+    loadingPath,
     truncated = false,
   } = props;
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
@@ -104,11 +107,13 @@ export const DiffFileTree = memo(function DiffFileTree(props: {
     }
 
     const selected = selectedPath === node.path;
+    const loading = loadingPath === node.path;
 
     return (
       <button
         key={`file:${node.path}`}
         type="button"
+        aria-busy={loading || undefined}
         aria-current={selected ? "true" : undefined}
         className={cn(
           "group flex w-full items-center gap-1.5 rounded-xl py-1 pr-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
@@ -120,12 +125,16 @@ export const DiffFileTree = memo(function DiffFileTree(props: {
         {hasDirectoryNodes || depth > 0 ? (
           <span aria-hidden="true" className="size-3.5 shrink-0" />
         ) : null}
-        <PierreEntryIcon
-          pathValue={node.path}
-          kind="file"
-          theme={resolvedTheme}
-          className="size-3.5 text-muted-foreground/70"
-        />
+        {loading ? (
+          <Spinner className="size-3.5 shrink-0 text-muted-foreground/70" />
+        ) : (
+          <PierreEntryIcon
+            pathValue={node.path}
+            kind="file"
+            theme={resolvedTheme}
+            className="size-3.5 text-muted-foreground/70"
+          />
+        )}
         <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90">
           {node.name}
         </span>

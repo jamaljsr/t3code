@@ -26,6 +26,7 @@ export interface DiffFileTreeCommitListProps {
 interface DiffFileTreeColumnProps {
   readonly files: ReadonlyArray<TurnDiffFileChange>;
   readonly selectedPath: string | null;
+  readonly loadingPath?: string | null;
   readonly resolvedTheme: "light" | "dark";
   readonly filesTruncated?: boolean;
   readonly onSelectFile: (path: string) => void;
@@ -35,6 +36,7 @@ interface DiffFileTreeColumnProps {
 export function DiffFileTreeColumn({
   files,
   selectedPath,
+  loadingPath = null,
   resolvedTheme,
   filesTruncated = false,
   onSelectFile,
@@ -72,6 +74,7 @@ export function DiffFileTreeColumn({
         <DiffFileTree
           files={files}
           {...(selectedPath !== null ? { selectedPath } : {})}
+          {...(loadingPath !== null ? { loadingPath } : {})}
           truncated={filesTruncated}
           resolvedTheme={resolvedTheme}
           onSelectFile={onSelectFile}
