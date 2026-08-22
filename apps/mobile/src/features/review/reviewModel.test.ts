@@ -14,6 +14,7 @@ import {
   getDefaultReviewSectionId,
   getReviewFilePreviewState,
   getReviewSectionIdForCheckpoint,
+  hydrateReviewRenderableFile,
   type ReviewRenderableFile,
 } from "./reviewModel";
 
@@ -62,6 +63,14 @@ describe("buildReviewSectionItems", () => {
         completedAt: "2026-04-02T00:00:00.000Z",
       }),
     ];
+    const gitFile = {
+      path: "a.ts",
+      oldPath: null,
+      changeType: "change" as const,
+      additions: 1,
+      deletions: 0,
+      binary: false,
+    };
     const gitSections: ReviewDiffPreviewSource[] = [
       {
         id: "working-tree",
@@ -69,7 +78,7 @@ describe("buildReviewSectionItems", () => {
         title: "Dirty worktree",
         baseRef: "HEAD",
         headRef: null,
-        diff: "diff --git a/a.ts b/a.ts",
+        files: [gitFile],
         diffHash: "hash-dirty",
         truncated: false,
       },
@@ -79,7 +88,7 @@ describe("buildReviewSectionItems", () => {
         title: "Against main",
         baseRef: "main",
         headRef: "feature",
-        diff: "diff --git a/a.ts b/a.ts",
+        files: [gitFile],
         diffHash: "hash-base",
         truncated: false,
       },
@@ -109,6 +118,11 @@ describe("buildReviewSectionItems", () => {
       isLoading: false,
       diff: expect.stringContaining("loaded.ts"),
     });
+    expect(items[3]).toMatchObject({
+      diff: null,
+      files: [gitFile],
+      truncated: false,
+    });
     expect(getDefaultReviewSectionId(items)).toBe("turn:2");
   });
 
@@ -128,6 +142,8 @@ describe("buildReviewSectionItems", () => {
         title: "Dirty worktree",
         subtitle: "Tracked, staged, and untracked worktree changes",
         diff: null,
+        files: [],
+        truncated: false,
         isLoading: true,
       }),
     ]);
@@ -348,6 +364,80 @@ describe("buildReviewParsedDiff", () => {
         kind: "file-suppressed",
         fileId: file.id,
         actionLabel: "Load diff",
+      }),
+    ]);
+  });
+});
+
+describe("hydrateReviewRenderableFile", () => {
+  it("inserts leading and trailing context around a one-hunk change", () => {
+    const file = makeRenderableFile({
+      path: "example.ts",
+      changeType: "change",
+      additions: 1,
+      deletions: 1,
+      rows: [
+        {
+          kind: "hunk",
+          id: "hunk-1",
+          header: "@@ -3,1 +3,1 @@",
+          context: null,
+        },
+        {
+          kind: "line",
+          id: "line-del",
+          change: "delete",
+          oldLineNumber: 3,
+          newLineNumber: null,
+          content: "gamma",
+          additionTokenIndex: null,
+          deletionTokenIndex: 0,
+          comparison: { change: "add", tokenIndex: 0 },
+        },
+        {
+          kind: "line",
+          id: "line-add",
+          change: "add",
+          oldLineNumber: null,
+          newLineNumber: 3,
+          content: "GAMMA",
+          additionTokenIndex: 0,
+          deletionTokenIndex: null,
+          comparison: { change: "delete", tokenIndex: 0 },
+        },
+      ],
+    });
+
+    const hydrated = hydrateReviewRenderableFile(
+      file,
+      "alpha\nbeta\ngamma\ndelta\n",
+      "alpha\nbeta\nGAMMA\ndelta\n",
+    );
+
+    expect(hydrated.rows).toEqual([
+      expect.objectContaining({
+        kind: "line",
+        change: "context",
+        oldLineNumber: 1,
+        newLineNumber: 1,
+        content: "alpha",
+      }),
+      expect.objectContaining({
+        kind: "line",
+        change: "context",
+        oldLineNumber: 2,
+        newLineNumber: 2,
+        content: "beta",
+      }),
+      expect.objectContaining({ kind: "hunk", header: "@@ -3,1 +3,1 @@" }),
+      expect.objectContaining({ kind: "line", change: "delete", content: "gamma" }),
+      expect.objectContaining({ kind: "line", change: "add", content: "GAMMA" }),
+      expect.objectContaining({
+        kind: "line",
+        change: "context",
+        oldLineNumber: 4,
+        newLineNumber: 4,
+        content: "delta",
       }),
     ]);
   });

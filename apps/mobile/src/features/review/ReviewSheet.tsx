@@ -71,7 +71,14 @@ import { useReviewCommentSelectionController } from "./useReviewCommentSelection
 import { resolveReviewAvailability } from "./reviewAvailability";
 import { resolveSelectedReviewFileId } from "./reviewPaneSelection";
 import { buildReviewSectionMenu } from "./review-section-menu";
-import type { ReviewSectionItem } from "./reviewModel";
+import {
+  toGitReviewNavigatorFiles,
+  toTurnReviewNavigatorFiles,
+  type ReviewNavigatorFile,
+  type ReviewSectionItem,
+} from "./reviewModel";
+import { getCachedReviewParsedDiff } from "./reviewState";
+import { useReviewGitFileLoad } from "./useReviewGitFileLoad";
 import { markNativeShowcaseReady } from "../showcase/nativeShowcaseScene";
 
 const REVIEW_HEADER_SPACING = 0;
@@ -148,28 +155,21 @@ function ReviewSelectionActionBar(props: {
   );
 }
 
-interface ReviewNavigatorFile {
-  readonly id: string;
-  readonly path: string;
-  readonly additions: number;
-  readonly deletions: number;
-}
-
 const ReviewFileNavigatorRow = memo(function ReviewFileNavigatorRow(props: {
   readonly file: ReviewNavigatorFile;
   readonly selected: boolean;
-  readonly onSelectFile: (fileId: string | null) => void;
+  readonly loading: boolean;
+  readonly onSelectFile: (fileId: string) => void;
 }) {
-  const { file, selected, onSelectFile } = props;
-  // Tapping the selected file again returns to the all-files diff.
+  const { file, loading, onSelectFile, selected } = props;
   const handlePress = useCallback(() => {
-    onSelectFile(selected ? null : file.id);
-  }, [file.id, onSelectFile, selected]);
+    onSelectFile(file.id);
+  }, [file.id, onSelectFile]);
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected }}
+      accessibilityState={{ selected, busy: loading }}
       className={
         selected
           ? "mt-1 min-h-12 justify-center rounded-xl bg-subtle-strong px-3 py-2"
@@ -177,20 +177,29 @@ const ReviewFileNavigatorRow = memo(function ReviewFileNavigatorRow(props: {
       }
       onPress={handlePress}
     >
-      <Text
-        className={
-          selected
-            ? "text-xs font-t3-bold text-foreground"
-            : "text-xs font-t3-medium text-foreground-secondary"
-        }
-        numberOfLines={2}
-      >
-        {file.path}
-      </Text>
-      <View className="mt-1 flex-row gap-2">
-        <Text className="text-2xs font-t3-bold text-emerald-600">+{file.additions}</Text>
-        <Text className="text-2xs font-t3-bold text-rose-600">-{file.deletions}</Text>
+      <View className="flex-row items-center gap-2">
+        <Text
+          className={
+            selected
+              ? "flex-1 text-xs font-t3-bold text-foreground"
+              : "flex-1 text-xs font-t3-medium text-foreground-secondary"
+          }
+          numberOfLines={2}
+        >
+          {file.path}
+        </Text>
+        {loading ? <ActivityIndicator size="small" /> : null}
       </View>
+      {file.additions !== null || file.deletions !== null ? (
+        <View className="mt-1 flex-row gap-2">
+          {file.additions !== null ? (
+            <Text className="text-2xs font-t3-bold text-emerald-600">+{file.additions}</Text>
+          ) : null}
+          {file.deletions !== null ? (
+            <Text className="text-2xs font-t3-bold text-rose-600">-{file.deletions}</Text>
+          ) : null}
+        </View>
+      ) : null}
     </Pressable>
   );
 });
@@ -203,7 +212,10 @@ interface ReviewFileNavigatorProps {
   readonly files: ReadonlyArray<ReviewNavigatorFile>;
   readonly headerInset: number;
   readonly sectionId: string | null;
-  readonly onSelectFile: (fileId: string | null) => void;
+  readonly selectedFileId: string | null;
+  readonly loadingPath: string | null;
+  readonly truncated: boolean;
+  readonly onSelectFile: (fileId: string) => void;
   readonly ref?: Ref<ReviewFileNavigatorHandle>;
 }
 
@@ -211,6 +223,9 @@ function ReviewFileNavigator({
   files,
   headerInset,
   sectionId,
+  selectedFileId,
+  loadingPath,
+  truncated,
   onSelectFile,
   ref,
 }: ReviewFileNavigatorProps) {
@@ -218,13 +233,9 @@ function ReviewFileNavigator({
   const sheetColor = String(useThemeColor("--color-sheet"));
   const foregroundColor = String(useThemeColor("--color-foreground"));
   const headerScrollEdgeEffects = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
-  const [fileSelection, setFileSelection] = useState<{
-    readonly sectionId: string | null;
-    readonly fileId: string | null;
-  }>({ sectionId: null, fileId: null });
   const availableFileIds = useMemo(() => files.map((file) => file.id), [files]);
-  const selectedFileId = resolveSelectedReviewFileId({
-    selection: fileSelection,
+  const resolvedSelectedFileId = resolveSelectedReviewFileId({
+    selection: { sectionId, fileId: selectedFileId },
     sectionId,
     availableFileIds,
   });
@@ -232,44 +243,36 @@ function ReviewFileNavigator({
   useImperativeHandle(
     ref,
     () => ({
-      setVisibleFile: (fileId) => {
-        if (fileId !== null && !availableFileIds.includes(fileId)) {
-          return;
-        }
-        setFileSelection((current) => {
-          if (current.sectionId === sectionId && current.fileId === fileId) {
-            return current;
-          }
-          return { sectionId, fileId };
-        });
+      setVisibleFile: () => {
+        // One-file review: the parent owns selection. Native scroll no longer
+        // changes which file is selected.
       },
     }),
-    [availableFileIds, sectionId],
-  );
-
-  const handleSelectFile = useCallback(
-    (fileId: string | null) => {
-      setFileSelection({ sectionId, fileId });
-      onSelectFile(fileId);
-    },
-    [onSelectFile, sectionId],
+    [],
   );
 
   const renderFile = useCallback(
     ({ item }: { readonly item: ReviewNavigatorFile }) => (
       <ReviewFileNavigatorRow
         file={item}
-        selected={selectedFileId === item.id}
-        onSelectFile={handleSelectFile}
+        selected={resolvedSelectedFileId === item.id}
+        loading={loadingPath === item.path || loadingPath === item.id}
+        onSelectFile={onSelectFile}
       />
     ),
-    [handleSelectFile, selectedFileId],
+    [loadingPath, onSelectFile, resolvedSelectedFileId],
   );
+
+  const listFooter = truncated ? (
+    <View className="mt-2 px-3 py-2">
+      <Text className="text-2xs font-t3-medium text-foreground-muted">File list truncated</Text>
+    </View>
+  ) : null;
 
   const fileList = (
     <FlatList
       data={files}
-      extraData={selectedFileId}
+      extraData={`${resolvedSelectedFileId}:${loadingPath ?? ""}:${truncated}`}
       keyExtractor={(file) => file.id}
       contentContainerStyle={{
         paddingHorizontal: 8,
@@ -281,6 +284,7 @@ function ReviewFileNavigator({
       }}
       scrollIndicatorInsets={Platform.OS === "ios" ? { top: insets.top + 44 } : undefined}
       renderItem={renderFile}
+      ListFooterComponent={listFooter}
     />
   );
 
@@ -389,12 +393,28 @@ export function ReviewSheet(props: ReviewSheetProps) {
     sections: reviewSections,
     selectedSectionId: selectedSection?.id ?? null,
   });
-  const { headerDiffSummary, nativeReviewDiffData, parsedDiff, pendingReviewCommentCount } =
-    useReviewDiffData({
-      threadKey: reviewCache.threadKey,
-      selectedSection,
-      draftMessage,
-    });
+  const isGitSection =
+    selectedSection?.kind === "working-tree" || selectedSection?.kind === "branch-range";
+  const turnListParsedDiff = useMemo(
+    () =>
+      isGitSection
+        ? null
+        : getCachedReviewParsedDiff({
+            threadKey: reviewCache.threadKey,
+            sectionId: selectedSection?.id ?? null,
+            diff: selectedSection?.diff,
+          }),
+    [isGitSection, reviewCache.threadKey, selectedSection?.diff, selectedSection?.id],
+  );
+  const navigatorFiles = useMemo(
+    () =>
+      isGitSection
+        ? toGitReviewNavigatorFiles(selectedSection?.files ?? [])
+        : toTurnReviewNavigatorFiles(
+            turnListParsedDiff?.kind === "files" ? turnListParsedDiff.files : [],
+          ),
+    [isGitSection, selectedSection?.files, turnListParsedDiff],
+  );
   const NativeReviewDiffView = resolveNativeReviewDiffView()!;
   const nativeReviewDiffViewRef = useRef<NativeReviewDiffViewHandle>(null);
   const showcasedReviewDrawRef = useRef<string | null>(null);
@@ -409,11 +429,10 @@ export function ReviewSheet(props: ReviewSheetProps) {
     }
   }, [refreshSelectedSection]);
   const reviewFileNavigatorRef = useRef<ReviewFileNavigatorHandle>(null);
-  const reviewFiles = parsedDiff.kind === "files" ? parsedDiff.files : [];
   const fileVisibility = useReviewFileVisibility({
     threadKey: reviewCache.threadKey,
     sectionId: selectedSection?.id ?? null,
-    files: reviewFiles,
+    files: navigatorFiles,
     cachedExpandedFileIds: selectedSection?.id
       ? reviewCache.expandedFileIdsBySection[selectedSection.id]
       : undefined,
@@ -421,7 +440,36 @@ export function ReviewSheet(props: ReviewSheetProps) {
       ? reviewCache.viewedFileIdsBySection[selectedSection.id]
       : undefined,
   });
-  const { collapsedFileIds, toggleExpandedFile, toggleViewedFile, viewedFileIds } = fileVisibility;
+  const { collapsedFileIds, expandedFileIds, toggleExpandedFile, toggleViewedFile, viewedFileIds } =
+    fileVisibility;
+  const selectedFileId = expandedFileIds[0] ?? navigatorFiles[0]?.id ?? null;
+  const selectedGitFile = useMemo(() => {
+    if (!isGitSection || selectedFileId === null) {
+      return null;
+    }
+    return selectedSection?.files.find((file) => file.path === selectedFileId) ?? null;
+  }, [isGitSection, selectedFileId, selectedSection?.files]);
+  const gitFilePane = useReviewGitFileLoad({
+    environmentId,
+    cwd: selectedThreadCwd,
+    enabled: isGitSection && selectedGitFile !== null,
+    sourceKind:
+      selectedSection?.kind === "working-tree" || selectedSection?.kind === "branch-range"
+        ? selectedSection.kind
+        : null,
+    diffHash: selectedSection?.diffHash ?? null,
+    baseRef: selectedSection?.baseRef ?? null,
+    headRef: selectedSection?.headRef ?? null,
+    selectedFile: selectedGitFile,
+  });
+  const { headerDiffSummary, nativeReviewDiffData, parsedDiff, pendingReviewCommentCount } =
+    useReviewDiffData({
+      threadKey: reviewCache.threadKey,
+      selectedSection,
+      selectedFileId,
+      gitDisplayedFile: gitFilePane.displayedFile,
+      draftMessage,
+    });
   const commentSelection = useReviewCommentSelectionController({
     environmentId,
     threadId,
@@ -431,7 +479,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const nativeBridge = useNativeReviewDiffBridge({
     threadKey: reviewCache.threadKey,
     sectionId: selectedSection?.id ?? null,
-    diff: selectedSection?.diff,
+    diff: gitFilePane.displayedFile?.diff ?? selectedSection?.diff,
     data: nativeReviewDiffData,
     scheme: selectedTheme,
     collapsedFileIds,
@@ -460,20 +508,11 @@ export function ReviewSheet(props: ReviewSheetProps) {
   );
 
   const handleSelectFile = useCallback(
-    (fileId: string | null) => {
+    (fileId: string) => {
       commentSelection.clearSelection();
-      if (fileId !== null && collapsedFileIds.includes(fileId)) {
-        toggleExpandedFile(fileId);
-      }
-      const navigation =
-        fileId === null
-          ? nativeReviewDiffViewRef.current?.scrollToTop(true)
-          : nativeReviewDiffViewRef.current?.scrollToFile(fileId, true);
-      void navigation?.catch((error: unknown) => {
-        console.error("[review] Failed to navigate to diff file", error);
-      });
+      toggleExpandedFile(fileId);
     },
-    [collapsedFileIds, commentSelection, toggleExpandedFile],
+    [commentSelection, toggleExpandedFile],
   );
   const handleVisibleFileChange = useCallback(
     (event: NativeSyntheticEvent<{ readonly fileId?: string | null }>) => {
@@ -485,15 +524,27 @@ export function ReviewSheet(props: ReviewSheetProps) {
     () => (
       <ReviewFileNavigator
         ref={reviewFileNavigatorRef}
-        files={nativeReviewDiffData.files}
+        files={navigatorFiles}
         // The workspace inspector column spans the full window height, so the
         // pane clears the status bar itself.
         headerInset={insets.top}
         sectionId={selectedSection?.id ?? null}
+        selectedFileId={selectedFileId}
+        loadingPath={gitFilePane.loadingPath}
+        truncated={isGitSection ? (selectedSection?.truncated ?? false) : false}
         onSelectFile={handleSelectFile}
       />
     ),
-    [handleSelectFile, insets.top, nativeReviewDiffData.files, selectedSection?.id],
+    [
+      gitFilePane.loadingPath,
+      handleSelectFile,
+      insets.top,
+      isGitSection,
+      navigatorFiles,
+      selectedFileId,
+      selectedSection?.id,
+      selectedSection?.truncated,
+    ],
   );
 
   const handleNativeToggleFile = useCallback(
@@ -518,8 +569,13 @@ export function ReviewSheet(props: ReviewSheetProps) {
 
   const parsedDiffNotice =
     parsedDiff.kind === "files" || parsedDiff.kind === "raw" ? parsedDiff.notice : null;
-  const hasCachedSelectedDiff = selectedSection?.diff != null;
-  const hasAnyCachedDiff = reviewSections.some((section) => section.diff != null);
+  const hasCachedSelectedDiff =
+    selectedSection?.kind === "turn"
+      ? selectedSection.diff != null
+      : selectedSection != null && !selectedSection.isLoading;
+  const hasAnyCachedDiff = reviewSections.some((section) =>
+    section.kind === "turn" ? section.diff != null : !section.isLoading,
+  );
   const sectionMenu = useMemo(() => buildReviewSectionMenu(reviewSections), [reviewSections]);
   const { showConnectionNotice, showSectionToolbar } = resolveReviewAvailability({
     hasEnvironmentPresentation: environment.isReady,
@@ -597,7 +653,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   // The changed-files navigator lives in the workspace inspector column —
   // the single right-hand pane per route — instead of an in-screen panel.
   const showChangedFilesPane =
-    !showConnectionNotice && selectedSection !== null && parsedDiff.kind === "files";
+    !showConnectionNotice && selectedSection !== null && navigatorFiles.length > 0;
   useRegisterWorkspaceInspector(showChangedFilesPane ? renderInspector : undefined);
 
   const listHeader = useMemo(() => {
@@ -612,6 +668,17 @@ export function ReviewSheet(props: ReviewSheetProps) {
       );
     }
 
+    if (gitFilePane.fileError) {
+      children.push(
+        <View key="review-file-error" className="border-b border-border bg-card px-4 py-3">
+          <Text className="text-sm font-t3-bold text-foreground">Could not load file</Text>
+          <Text className="text-xs leading-normal text-foreground-muted">
+            {gitFilePane.fileError}
+          </Text>
+        </View>,
+      );
+    }
+
     if (parsedDiffNotice) {
       children.push(<ReviewNotice key="review-notice" notice={parsedDiffNotice} />);
     }
@@ -621,7 +688,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     }
 
     return <>{children}</>;
-  }, [error, parsedDiffNotice]);
+  }, [error, gitFilePane.fileError, parsedDiffNotice]);
   const headerSubtitle = [
     headerDiffSummary.additions,
     headerDiffSummary.deletions,
@@ -800,7 +867,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
                   appearanceScheme={selectedTheme}
                   collapsedFileIdsJson={nativeBridge.collapsedFileIdsJson}
                   collapsedCommentIdsJson={nativeBridge.collapsedCommentIdsJson}
-                  contentResetKey={`${reviewCache.threadKey}:${selectedSection.id}`}
+                  contentResetKey={`${reviewCache.threadKey}:${selectedSection.id}:${gitFilePane.displayedFile?.path ?? selectedFileId ?? ""}`}
                   contentWidth={NATIVE_REVIEW_DIFF_CONTENT_WIDTH}
                   nativeViewRef={nativeReviewDiffViewRef}
                   rowHeight={nativeReviewDiffStyle.rowHeight}
@@ -841,12 +908,31 @@ export function ReviewSheet(props: ReviewSheetProps) {
                   This thread has no ready turn diffs and the worktree diff is empty.
                 </Text>
               </View>
-            ) : selectedSection.isLoading && selectedSection.diff === null ? (
+            ) : selectedSection.isLoading &&
+              selectedSection.diff === null &&
+              navigatorFiles.length === 0 ? (
               <View className="items-center gap-3 border-b border-border bg-card px-4 py-6">
                 <ActivityIndicator size="small" />
                 <Text className="text-xs text-foreground-muted">Loading diff…</Text>
               </View>
-            ) : parsedDiff.kind === "empty" ? (
+            ) : selectedGitFile?.binary ? (
+              <View className="border-b border-border bg-card px-4 py-5">
+                <Text className="text-sm font-t3-bold text-foreground">Binary file</Text>
+                <Text className="text-xs leading-normal text-foreground-muted">
+                  Cannot preview binary file.
+                </Text>
+              </View>
+            ) : isGitSection &&
+              navigatorFiles.length > 0 &&
+              parsedDiff.kind === "empty" &&
+              !selectedGitFile?.binary &&
+              !gitFilePane.fileError ? (
+              <View className="items-center gap-3 border-b border-border bg-card px-4 py-6">
+                <ActivityIndicator size="small" />
+                <Text className="text-xs text-foreground-muted">Loading file…</Text>
+              </View>
+            ) : parsedDiff.kind === "empty" && gitFilePane.fileError ? null : parsedDiff.kind ===
+              "empty" ? (
               <View className="border-b border-border bg-card px-4 py-5">
                 <Text className="text-sm font-t3-bold text-foreground">No changes</Text>
                 <Text className="text-xs leading-normal text-foreground-muted">
