@@ -1254,6 +1254,7 @@ export default function DiffPanel({
                     sectionId={reviewSectionId}
                     sectionTitle={reviewSectionTitle}
                     composerDraftTarget={composerDraftTarget}
+                    renderHeaderPrefix={() => null}
                     renderHeaderMetadata={(fileDiff, fileKey, collapsed) => {
                       if (
                         !shouldRenderDiffHunkNav({
