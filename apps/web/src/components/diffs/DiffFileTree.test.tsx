@@ -50,4 +50,11 @@ describe("DiffFileTree", () => {
     expect(markup).toContain('aria-current="true"');
     expect(markup).toContain("main.ts");
   });
+
+  it("shows a footer when the file list is truncated", () => {
+    const markup = renderToStaticMarkup(
+      <DiffFileTree files={NESTED_FILES} truncated resolvedTheme="light" onSelectFile={() => {}} />,
+    );
+    expect(markup).toContain("File list truncated");
+  });
 });

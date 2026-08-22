@@ -14,9 +14,17 @@ export const DiffFileTree = memo(function DiffFileTree(props: {
   allDirectoriesExpanded?: boolean;
   resolvedTheme: "light" | "dark";
   selectedPath?: string;
+  truncated?: boolean;
   onSelectFile: (path: string) => void;
 }) {
-  const { files, allDirectoriesExpanded = true, onSelectFile, resolvedTheme, selectedPath } = props;
+  const {
+    files,
+    allDirectoriesExpanded = true,
+    onSelectFile,
+    resolvedTheme,
+    selectedPath,
+    truncated = false,
+  } = props;
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
   const directoryPathsKey = useMemo(
     () => collectDirectoryPaths(treeNodes).join("\u0000"),
@@ -130,7 +138,14 @@ export const DiffFileTree = memo(function DiffFileTree(props: {
     );
   };
 
-  return <div className="space-y-0.5">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>;
+  return (
+    <div className="space-y-0.5">
+      {treeNodes.map((node) => renderTreeNode(node, 0))}
+      {truncated ? (
+        <p className="px-3 py-1.5 text-[10px] text-muted-foreground">File list truncated</p>
+      ) : null}
+    </div>
+  );
 });
 
 function collectDirectoryPaths(nodes: ReadonlyArray<TurnDiffTreeNode>): string[] {

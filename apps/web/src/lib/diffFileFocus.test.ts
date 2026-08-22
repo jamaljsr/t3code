@@ -17,6 +17,8 @@ import {
   shouldRenderDiffHunkNav,
   shouldShowDiffHunkNav,
   stepDiffHunkIndex,
+  sumManifestDiffStats,
+  toGitDiffTreeFiles,
   toTurnDiffTreeFiles,
   waitForFileDiffHydration,
 } from "./diffFileFocus";
@@ -390,5 +392,41 @@ describe("toTurnDiffTreeFiles", () => {
     expect(toTurnDiffTreeFiles([{ fileDiff, filePath: "src/renamed.ts" }])).toEqual([
       { path: "src/renamed.ts", kind: "change", additions: 4, deletions: 2 },
     ]);
+  });
+});
+
+describe("toGitDiffTreeFiles", () => {
+  it("maps manifest rows onto tree entries using changeType and null-safe stats", () => {
+    expect(
+      toGitDiffTreeFiles([
+        {
+          path: "src/new.ts",
+          changeType: "new",
+          additions: null,
+          deletions: null,
+        },
+        {
+          path: "src/old.ts",
+          changeType: "deleted",
+          additions: 0,
+          deletions: 3,
+        },
+      ]),
+    ).toEqual([
+      { path: "src/new.ts", kind: "new", additions: 0, deletions: 0 },
+      { path: "src/old.ts", kind: "deleted", additions: 0, deletions: 3 },
+    ]);
+  });
+});
+
+describe("sumManifestDiffStats", () => {
+  it("sums additions and deletions that are not null", () => {
+    expect(
+      sumManifestDiffStats([
+        { additions: 2, deletions: 1 },
+        { additions: null, deletions: 4 },
+        { additions: 3, deletions: null },
+      ]),
+    ).toEqual({ additions: 5, deletions: 5 });
   });
 });

@@ -193,3 +193,34 @@ export function toTurnDiffTreeFiles(
     };
   });
 }
+
+export function toGitDiffTreeFiles(
+  files: ReadonlyArray<{
+    readonly path: string;
+    readonly changeType: string;
+    readonly additions: number | null;
+    readonly deletions: number | null;
+  }>,
+): TurnDiffFileChange[] {
+  return files.map((file) => ({
+    path: file.path,
+    kind: file.changeType,
+    additions: file.additions ?? 0,
+    deletions: file.deletions ?? 0,
+  }));
+}
+
+export function sumManifestDiffStats(
+  files: ReadonlyArray<{
+    readonly additions: number | null;
+    readonly deletions: number | null;
+  }>,
+): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const file of files) {
+    if (file.additions !== null) additions += file.additions;
+    if (file.deletions !== null) deletions += file.deletions;
+  }
+  return { additions, deletions };
+}
