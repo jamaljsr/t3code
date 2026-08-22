@@ -548,13 +548,11 @@ export function ReviewSheet(props: ReviewSheetProps) {
   );
 
   const handleNativeToggleFile = useCallback(
-    (event: NativeSyntheticEvent<{ readonly fileId?: string }>) => {
-      const { fileId } = event.nativeEvent;
-      if (fileId) {
-        toggleExpandedFile(fileId);
-      }
+    (_event: NativeSyntheticEvent<{ readonly fileId?: string }>) => {
+      // One-file review: the list is the switcher. Header collapse must not
+      // change the selected file (web removed the chevron for the same reason).
     },
-    [toggleExpandedFile],
+    [],
   );
 
   const handleNativeToggleViewedFile = useCallback(

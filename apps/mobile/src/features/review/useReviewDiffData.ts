@@ -101,7 +101,7 @@ function buildGitDisplayedParsedDiff(
   );
   return {
     ...parsed,
-    files: [hydrated],
+    files: [{ ...hydrated, id: displayedFile.path }],
     fileCount: 1,
     additions: hydrated.additions,
     deletions: hydrated.deletions,

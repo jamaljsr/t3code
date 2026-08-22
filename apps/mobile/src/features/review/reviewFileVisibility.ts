@@ -102,18 +102,11 @@ export function useReviewFileVisibility(input: {
         return;
       }
 
-      const shouldCollapse = !viewedFileIds.includes(fileId);
       updateReviewViewedFileIds(threadKey, sectionId, (existing) =>
         toggleReviewFileId(getValidExplicitReviewFileIds(files, existing), fileId),
       );
-
-      if (shouldCollapse) {
-        updateReviewExpandedFileIds(threadKey, sectionId, (existing) =>
-          removeReviewFileId(getValidReviewFileIds(files, existing), fileId),
-        );
-      }
     },
-    [files, sectionId, threadKey, viewedFileIds],
+    [files, sectionId, threadKey],
   );
 
   return {

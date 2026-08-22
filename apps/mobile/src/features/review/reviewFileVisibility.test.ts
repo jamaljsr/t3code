@@ -50,4 +50,10 @@ describe("review file visibility", () => {
     expect(removeReviewFileId(original, "a.ts")).toEqual([]);
     expect(original).toEqual(["a.ts"]);
   });
+
+  it("does not treat marking a file viewed as changing the selected file", () => {
+    expect(selectReviewFileId("b.ts")).toEqual(["b.ts"]);
+    expect(getValidReviewFileIds(files, ["b.ts"])).toEqual(["b.ts"]);
+    expect(getValidExplicitReviewFileIds(files, ["b.ts"])).toEqual(["b.ts"]);
+  });
 });
