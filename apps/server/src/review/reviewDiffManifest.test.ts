@@ -82,4 +82,52 @@ describe("buildReviewDiffManifest", () => {
     });
     expect(files.truncated).toBe(true);
   });
+
+  it("resolves same-directory braced numstat rename paths", () => {
+    const files = buildReviewDiffManifest({
+      nameStatus: "R100\tsrc/old.ts\tsrc/new.ts",
+      numstat: "0\t0\tsrc/{old.ts => new.ts}",
+      untrackedPaths: [],
+      listingTruncated: false,
+    });
+    expect(files.files[0]).toMatchObject({
+      path: "src/new.ts",
+      oldPath: "src/old.ts",
+      changeType: "rename-pure",
+      additions: 0,
+      deletions: 0,
+    });
+  });
+
+  it("resolves prefix/suffix braced numstat rename paths", () => {
+    const files = buildReviewDiffManifest({
+      nameStatus: "R80\tdir/foo/file.ts\tdir/bar/file.ts",
+      numstat: "3\t1\tdir/{foo => bar}/file.ts",
+      untrackedPaths: [],
+      listingTruncated: false,
+    });
+    expect(files.files[0]).toMatchObject({
+      path: "dir/bar/file.ts",
+      oldPath: "dir/foo/file.ts",
+      changeType: "rename-changed",
+      additions: 3,
+      deletions: 1,
+    });
+  });
+
+  it("treats a missed numstat join as unknown stats, not a pure rename", () => {
+    const files = buildReviewDiffManifest({
+      nameStatus: "R100\told.ts\tnew.ts",
+      numstat: "",
+      untrackedPaths: [],
+      listingTruncated: false,
+    });
+    expect(files.files[0]).toMatchObject({
+      path: "new.ts",
+      oldPath: "old.ts",
+      changeType: "rename-changed",
+      additions: null,
+      deletions: null,
+    });
+  });
 });

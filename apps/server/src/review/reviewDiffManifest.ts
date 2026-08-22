@@ -15,6 +15,19 @@ function splitNonEmptyLines(text: string): Array<string> {
   return lines;
 }
 
+function resolveNumstatNewPath(rawPath: string): string {
+  const braced = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(rawPath);
+  if (braced) {
+    const [, prefix = "", , to = "", suffix = ""] = braced;
+    const resolved = `${prefix}${to}${suffix}`;
+    return resolved.length > 0 ? resolved : rawPath;
+  }
+  const arrow = rawPath.indexOf(" => ");
+  if (arrow < 0) return rawPath;
+  const to = rawPath.slice(arrow + " => ".length).trim();
+  return to.length > 0 ? to : rawPath;
+}
+
 function parseNumstatEntries(numstat: string): Map<string, NumstatEntry> {
   const entries = new Map<string, NumstatEntry>();
   for (const line of splitNonEmptyLines(numstat)) {
@@ -22,10 +35,7 @@ function parseNumstatEntries(numstat: string): Map<string, NumstatEntry> {
     const rawPath =
       pathParts.length > 1 ? (pathParts.at(-1) ?? "").trim() : pathParts.join("\t").trim();
     if (rawPath.length === 0) continue;
-    const renameArrowIndex = rawPath.indexOf(" => ");
-    const renamedPath =
-      renameArrowIndex >= 0 ? rawPath.slice(renameArrowIndex + " => ".length).trim() : rawPath;
-    const path = renamedPath.length > 0 ? renamedPath : rawPath;
+    const path = resolveNumstatNewPath(rawPath);
 
     if (addedRaw === "-" && deletedRaw === "-") {
       entries.set(path, { additions: null, deletions: null, binary: true });
@@ -92,8 +102,8 @@ export function buildReviewDiffManifest(input: {
     if (path.length === 0) continue;
 
     const stats = statsByPath.get(path);
-    const additions = stats === undefined ? 0 : stats.additions;
-    const deletions = stats === undefined ? 0 : stats.deletions;
+    const additions = stats === undefined ? null : stats.additions;
+    const deletions = stats === undefined ? null : stats.deletions;
     const binary = stats?.binary ?? false;
 
     filesByPath.set(path, {
