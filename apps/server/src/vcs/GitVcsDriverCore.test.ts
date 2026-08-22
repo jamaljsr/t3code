@@ -18,6 +18,7 @@ import { GitCommandError, type ReviewDiffFileContentsInput } from "@t3tools/cont
 import { ServerConfig } from "../config.ts";
 import { buildReviewDiffManifest } from "../review/reviewDiffManifest.ts";
 import {
+  appendReviewDiffTruncationMarker,
   makeGitVcsDriverCore,
   parseReviewDiffCommitLog,
   REVIEW_DIFF_COMMIT_LIMIT,
@@ -1221,6 +1222,23 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         assert.include(result.diff, "scratch.ts");
         assert.include(result.diff, "+export const scratch = true;");
         assert.strictEqual(result.truncated, false);
+      }),
+    );
+
+    it.effect("appends the truncation marker only when a patch is cut", () =>
+      Effect.sync(() => {
+        assert.strictEqual(
+          appendReviewDiffTruncationMarker("diff --git a/README.md", false),
+          "diff --git a/README.md",
+        );
+        assert.strictEqual(
+          appendReviewDiffTruncationMarker("diff --git a/README.md", true),
+          "diff --git a/README.md\n\n[truncated]",
+        );
+        assert.strictEqual(
+          appendReviewDiffTruncationMarker("diff --git a/README.md\n\n[truncated]", true),
+          "diff --git a/README.md\n\n[truncated]",
+        );
       }),
     );
   });

@@ -284,6 +284,13 @@ export function splitNullSeparatedGitStdoutPaths(
   return splitNullSeparatedPaths(result.stdout, result.stdoutTruncated);
 }
 
+export function appendReviewDiffTruncationMarker(diff: string, truncated: boolean): string {
+  if (!truncated || diff.endsWith(OUTPUT_TRUNCATED_MARKER)) {
+    return diff;
+  }
+  return `${diff}${OUTPUT_TRUNCATED_MARKER}`;
+}
+
 export const REVIEW_DIFF_COMMIT_LIMIT = 100;
 export const REVIEW_DIFF_COMMIT_LOG_MAX_OUTPUT_BYTES = 120_000;
 
@@ -2566,7 +2573,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
               ["diff", ...patchArgs, "HEAD", "--", pathspec],
               patchOptions,
             );
-      return { diff: result.stdout, truncated: result.stdoutTruncated };
+      return {
+        diff: appendReviewDiffTruncationMarker(result.stdout, result.stdoutTruncated),
+        truncated: result.stdoutTruncated,
+      };
     }
 
     if (!input.baseRef || !input.headRef) {
@@ -2592,7 +2602,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       ["diff", ...patchArgs, mergeBase, input.headRef, "--", pathspec],
       patchOptions,
     );
-    return { diff: result.stdout, truncated: result.stdoutTruncated };
+    return {
+      diff: appendReviewDiffTruncationMarker(result.stdout, result.stdoutTruncated),
+      truncated: result.stdoutTruncated,
+    };
   });
 
   const readConfigValue: GitVcsDriver.GitVcsDriver["Service"]["readConfigValue"] = (cwd, key) =>
