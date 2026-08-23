@@ -56,6 +56,7 @@ import {
   toGitDiffTreeFiles,
   toTurnDiffTreeFiles,
 } from "../lib/diffFileFocus";
+import { diffHunkScrollbarMarksForFile } from "../lib/diffHunkScrollbar";
 import { shouldShowDiffCommitPane } from "../lib/diffCommitList";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useProject, useThread } from "../state/entities";
@@ -67,6 +68,7 @@ import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { DiffFileTreeColumn } from "./diffs/DiffFileTreeColumn";
 import { DiffHunkNav } from "./diffs/DiffHunkNav";
+import { DiffHunkScrollbarMarks } from "./diffs/DiffHunkScrollbarMarks";
 import { Button } from "./ui/button";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 import { Switch } from "./ui/switch";
@@ -944,6 +946,8 @@ export default function DiffPanel({
           collapsedFileKeys: EMPTY_COLLAPSED_DIFF_FILE_KEYS,
           fileKeys: diffFileKeys,
         });
+  const focusedFileDiff = focusedFile?.fileDiff ?? codeViewFiles[0]?.fileDiff;
+  const hunkScrollbarMarks = focusedFileDiff ? diffHunkScrollbarMarksForFile(focusedFileDiff) : [];
   const treeFocusEffectStateRef = useRef({
     expandUnchanged,
     focusedFile,
@@ -1444,7 +1448,7 @@ export default function DiffPanel({
                 ) : null
               ) : renderablePatch.kind === "files" ? (
                 <div
-                  className={cn("min-h-0 flex-1", holdFileReveal && "invisible")}
+                  className={cn("relative min-h-0 flex-1", holdFileReveal && "invisible")}
                   onClickCapture={(event) => {
                     const composedPath = event.nativeEvent.composedPath?.() ?? [];
                     for (const node of composedPath) {
@@ -1515,6 +1519,7 @@ export default function DiffPanel({
                       layout: { paddingTop: 0, paddingBottom: 0, gap: 0 },
                     }}
                   />
+                  <DiffHunkScrollbarMarks marks={hunkScrollbarMarks} />
                 </div>
               ) : (
                 <div className="min-h-0 flex-1 overflow-auto p-2">

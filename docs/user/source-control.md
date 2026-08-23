@@ -48,6 +48,7 @@ T3 Code works with the platforms your team already uses:
 - Expand all is gone — pick a file instead of stacking every change
 - Working tree and branch reviews show the full file, including unchanged lines
 - Turn diffs show only the changed hunks
+- The scrollbar marks where hunks sit in the file. Click the bar to jump
 
 ### Know Your Setup at a Glance
 
