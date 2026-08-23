@@ -168,6 +168,21 @@ export function didRevealRequestChange(previousRequestId: number, requestId: num
   return previousRequestId !== requestId;
 }
 
+/** Hide the pane until the first-hunk scroll lands so we never paint line 1 first. */
+export function shouldHoldDiffFileReveal(input: {
+  readonly selectedFileKey: string | null;
+  readonly revealedFileKey: string | null;
+  readonly mountKey: string;
+  readonly revealedMountKey: string | null;
+}): boolean {
+  if (input.selectedFileKey === null) {
+    return false;
+  }
+  return (
+    input.selectedFileKey !== input.revealedFileKey || input.mountKey !== input.revealedMountKey
+  );
+}
+
 export function clampDiffFileTreeMaxWidth(panelWidth: number): number {
   if (!Number.isFinite(panelWidth) || panelWidth <= 0) {
     return DIFF_FILE_TREE_DEFAULT_WIDTH;

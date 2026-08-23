@@ -45,10 +45,10 @@ import {
 import {
   DIFF_FILE_TREE_VISIBLE_BY_DEFAULT,
   canExpandUnchanged,
-  didRevealRequestChange,
   firstHunkScrollTarget,
   hunkScrollTarget,
   revealFocusedDiffAfterHydration,
+  shouldHoldDiffFileReveal,
   shouldExpandUnchanged,
   shouldRenderDiffHunkNav,
   stepDiffHunkIndex,
@@ -356,6 +356,10 @@ export default function DiffPanel({
   const [focusedHunkIndexes, setFocusedHunkIndexes] = useState<ReadonlyMap<string, number>>(
     () => new Map(),
   );
+  const [revealedFile, setRevealedFile] = useState<{
+    readonly fileKey: string;
+    readonly mountKey: string;
+  } | null>(null);
   const codeViewRef = useRef<AnnotatableCodeViewHandle>(null);
   const previousSelectedPathRef = useRef<string | null>(null);
   const gitFileLoadRequestIdRef = useRef(0);
@@ -436,7 +440,6 @@ export default function DiffPanel({
   const selectedFilePath = diffSelection.kind === "turn" ? diffSelection.filePath : null;
   const selectedFileRevealRequestId =
     diffSelection.kind === "turn" ? diffSelection.revealRequestId : 0;
-  const previousSelectedFileRevealRequestIdRef = useRef(selectedFileRevealRequestId);
   const selectedTurn =
     selectedTurnId === null
       ? undefined
@@ -981,37 +984,42 @@ export default function DiffPanel({
     return getDiffLineStat(renderableFiles);
   }, [renderableFiles, selectedGitSource?.files, selectedTurnId]);
   const selectedDiffFileKey = focusedFile?.fileKey ?? null;
+  const holdFileReveal = shouldHoldDiffFileReveal({
+    selectedFileKey: selectedDiffFileKey,
+    revealedFileKey: revealedFile?.fileKey ?? null,
+    mountKey: codeViewMountKey,
+    revealedMountKey: revealedFile?.mountKey ?? null,
+  });
 
   useEffect(() => {
-    if (!selectedDiffFileKey) return;
-    codeViewRef.current?.scrollTo({ type: "item", id: selectedDiffFileKey, align: "start" });
-  }, [codeViewMountKey, selectedDiffFileKey, selectedFileRevealRequestId]);
-
-  useEffect(() => {
-    const revealRequestChanged = didRevealRequestChange(
-      previousSelectedFileRevealRequestIdRef.current,
-      selectedFileRevealRequestId,
-    );
-    previousSelectedFileRevealRequestIdRef.current = selectedFileRevealRequestId;
     const {
       expandUnchanged: shouldWaitForPierreHydration,
       focusedFile: currentFocusedFile,
       loadDiffFiles: currentLoadDiffFiles,
     } = treeFocusEffectStateRef.current;
-    if (revealRequestChanged || !treeFocus || !currentFocusedFile) return;
+    if (!currentFocusedFile) return;
     const target = firstHunkScrollTarget(currentFocusedFile.fileDiff, currentFocusedFile.fileKey);
     const needsHydration = Boolean(shouldWaitForPierreHydration && currentLoadDiffFiles);
+    const revealed = {
+      fileKey: currentFocusedFile.fileKey,
+      mountKey: codeViewMountKey,
+    };
     let cancelled = false;
     void revealFocusedDiffAfterHydration({
       fileDiff: currentFocusedFile.fileDiff,
       needsHydration,
       isCancelled: () => cancelled,
-      scroll: () => codeViewRef.current?.scrollTo(target),
+      scroll: () => {
+        codeViewRef.current?.scrollTo(target);
+        if (!cancelled) {
+          setRevealedFile(revealed);
+        }
+      },
     });
     return () => {
       cancelled = true;
     };
-  }, [treeFocus, focusedFile?.fileKey, selectedFileRevealRequestId]);
+  }, [codeViewMountKey, focusedFile?.fileKey, selectedFileRevealRequestId, treeFocus]);
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -1436,7 +1444,7 @@ export default function DiffPanel({
                 ) : null
               ) : renderablePatch.kind === "files" ? (
                 <div
-                  className="min-h-0 flex-1"
+                  className={cn("min-h-0 flex-1", holdFileReveal && "invisible")}
                   onClickCapture={(event) => {
                     const composedPath = event.nativeEvent.composedPath?.() ?? [];
                     for (const node of composedPath) {

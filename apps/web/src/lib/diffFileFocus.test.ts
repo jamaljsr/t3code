@@ -9,6 +9,7 @@ import {
   clampDiffFileTreeMaxWidth,
   collapseAllExcept,
   didRevealRequestChange,
+  shouldHoldDiffFileReveal,
   diffHunkNavLabel,
   firstHunkScrollTarget,
   hunkScrollTarget,
@@ -363,6 +364,52 @@ describe("didRevealRequestChange", () => {
   it("detects a new chat reveal request", () => {
     expect(didRevealRequestChange(3, 4)).toBe(true);
     expect(didRevealRequestChange(4, 4)).toBe(false);
+  });
+});
+
+describe("shouldHoldDiffFileReveal", () => {
+  it("holds the new file until the first-hunk scroll has landed", () => {
+    expect(
+      shouldHoldDiffFileReveal({
+        selectedFileKey: "file-b",
+        revealedFileKey: "file-a",
+        mountKey: "scope",
+        revealedMountKey: "scope",
+      }),
+    ).toBe(true);
+  });
+
+  it("holds again when the code view remounts the same path", () => {
+    expect(
+      shouldHoldDiffFileReveal({
+        selectedFileKey: "file-a",
+        revealedFileKey: "file-a",
+        mountKey: "turn:2",
+        revealedMountKey: "turn:1",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not hold after the first-hunk scroll for this file and mount", () => {
+    expect(
+      shouldHoldDiffFileReveal({
+        selectedFileKey: "file-a",
+        revealedFileKey: "file-a",
+        mountKey: "scope",
+        revealedMountKey: "scope",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not hold an empty pane", () => {
+    expect(
+      shouldHoldDiffFileReveal({
+        selectedFileKey: null,
+        revealedFileKey: null,
+        mountKey: "scope",
+        revealedMountKey: null,
+      }),
+    ).toBe(false);
   });
 });
 
