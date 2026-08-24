@@ -41,6 +41,15 @@ T3 Code works with the platforms your team already uses:
 - Open the review directly in your browser with one click
 - Check out a teammate's branch to review code locally
 
+**Review diffs in a thread**
+
+- The thread diff pane shows one file at a time
+- Use the file tree to switch files. Hiding the tree leaves the current file on screen
+- Expand all is gone — pick a file instead of stacking every change
+- Working tree and branch reviews show the full file, including unchanged lines
+- Turn diffs show only the changed hunks
+- The scrollbar marks where hunks sit in the file. Click the bar to jump
+
 ### Know Your Setup at a Glance
 
 The **Source Control settings** page shows you exactly what's connected:

@@ -168,6 +168,21 @@ export function didRevealRequestChange(previousRequestId: number, requestId: num
   return previousRequestId !== requestId;
 }
 
+/** Hide the pane until the first-hunk scroll lands so we never paint line 1 first. */
+export function shouldHoldDiffFileReveal(input: {
+  readonly selectedFileKey: string | null;
+  readonly revealedFileKey: string | null;
+  readonly mountKey: string;
+  readonly revealedMountKey: string | null;
+}): boolean {
+  if (input.selectedFileKey === null) {
+    return false;
+  }
+  return (
+    input.selectedFileKey !== input.revealedFileKey || input.mountKey !== input.revealedMountKey
+  );
+}
+
 export function clampDiffFileTreeMaxWidth(panelWidth: number): number {
   if (!Number.isFinite(panelWidth) || panelWidth <= 0) {
     return DIFF_FILE_TREE_DEFAULT_WIDTH;
@@ -192,4 +207,35 @@ export function toTurnDiffTreeFiles(
       deletions: stat.deletions,
     };
   });
+}
+
+export function toGitDiffTreeFiles(
+  files: ReadonlyArray<{
+    readonly path: string;
+    readonly changeType: string;
+    readonly additions: number | null;
+    readonly deletions: number | null;
+  }>,
+): TurnDiffFileChange[] {
+  return files.map((file) => ({
+    path: file.path,
+    kind: file.changeType,
+    additions: file.additions ?? 0,
+    deletions: file.deletions ?? 0,
+  }));
+}
+
+export function sumManifestDiffStats(
+  files: ReadonlyArray<{
+    readonly additions: number | null;
+    readonly deletions: number | null;
+  }>,
+): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const file of files) {
+    if (file.additions !== null) additions += file.additions;
+    if (file.deletions !== null) deletions += file.deletions;
+  }
+  return { additions, deletions };
 }

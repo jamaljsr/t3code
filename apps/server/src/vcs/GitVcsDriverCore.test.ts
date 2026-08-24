@@ -16,7 +16,9 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { GitCommandError, type ReviewDiffFileContentsInput } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
+import { buildReviewDiffManifest } from "../review/reviewDiffManifest.ts";
 import {
+  appendReviewDiffTruncationMarker,
   makeGitVcsDriverCore,
   parseReviewDiffCommitLog,
   REVIEW_DIFF_COMMIT_LIMIT,
@@ -870,7 +872,14 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         assert.strictEqual(branchRange?.commits?.[1]?.body.trim(), "First body.");
         assert.strictEqual(branchRange?.commitsTruncated, false);
         assert.strictEqual(branchRange?.commitsError, false);
-        assert.isNotEmpty(branchRange?.diff);
+        assert.isNotEmpty(branchRange?.files);
+        assert.deepStrictEqual(
+          branchRange?.files.map((file) => ({ path: file.path, changeType: file.changeType })),
+          [
+            { path: "one.ts", changeType: "new" },
+            { path: "two.ts", changeType: "new" },
+          ],
+        );
       }),
     );
 
@@ -906,7 +915,8 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         const workingTree = preview.sources.find((source) => source.kind === "working-tree");
         const branchRange = preview.sources.find((source) => source.kind === "branch-range");
 
-        assert.isNotEmpty(workingTree?.diff);
+        assert.isNotEmpty(workingTree?.files);
+        assert.strictEqual(workingTree?.files[0]?.path, "README.md");
         assert.deepStrictEqual(branchRange?.commits, []);
         assert.strictEqual(branchRange?.commitsTruncated, false);
         assert.strictEqual(branchRange?.commitsError, true);
@@ -957,16 +967,56 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
           ignoreWhitespace: true,
         });
 
-        assert.isNotEmpty(included.sources.find((source) => source.kind === "working-tree")?.diff);
-        assert.isNotEmpty(included.sources.find((source) => source.kind === "branch-range")?.diff);
-        assert.strictEqual(
-          ignored.sources.find((source) => source.kind === "working-tree")?.diff,
-          "",
+        const includedWorkingTree = included.sources.find(
+          (source) => source.kind === "working-tree",
         );
-        assert.strictEqual(
-          ignored.sources.find((source) => source.kind === "branch-range")?.diff,
-          "",
+        const includedBranchRange = included.sources.find(
+          (source) => source.kind === "branch-range",
         );
+        const ignoredWorkingTree = ignored.sources.find((source) => source.kind === "working-tree");
+        const ignoredBranchRange = ignored.sources.find((source) => source.kind === "branch-range");
+
+        assert.ok(includedWorkingTree?.files.some((file) => file.path === "README.md"));
+        assert.ok(includedBranchRange?.files.some((file) => file.path === "README.md"));
+        assert.ok(!ignoredWorkingTree?.files.some((file) => file.path === "README.md"));
+        assert.ok(!ignoredBranchRange?.files.some((file) => file.path === "README.md"));
+      }),
+    );
+
+    it.effect("includes untracked worktree files as new without a patch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "scratch.ts", "export const scratch = 1;\n");
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd });
+        const workingTree = preview.sources.find((source) => source.kind === "working-tree");
+        const scratch = workingTree?.files.find((file) => file.path === "scratch.ts");
+
+        assert.deepStrictEqual(scratch, {
+          path: "scratch.ts",
+          oldPath: null,
+          changeType: "new",
+          additions: null,
+          deletions: null,
+          binary: false,
+        });
+        assert.isUndefined((workingTree as { diff?: unknown } | undefined)?.diff);
+      }),
+    );
+
+    it.effect("marks a preview source truncated when a listing was cut", () =>
+      Effect.sync(() => {
+        const manifest = buildReviewDiffManifest({
+          nameStatus: "M\tREADME.md",
+          numstat: "1\t1\tREADME.md",
+          untrackedPaths: [],
+          listingTruncated: true,
+        });
+
+        assert.strictEqual(manifest.truncated, true);
+        assert.strictEqual(manifest.files[0]?.path, "README.md");
       }),
     );
 
@@ -1068,6 +1118,178 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         assert.strictEqual(contents.oldContents, "# test\n");
         assert.strictEqual(contents.newContents, "# branch change\nunchanged context\n");
+      }),
+    );
+
+    it.effect("returns a one-file working-tree patch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+        const result = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+        });
+
+        assert.include(result.diff, "README.md");
+        assert.include(result.diff, "+# changed");
+        assert.strictEqual(result.truncated, false);
+      }),
+    );
+
+    it.effect("returns a one-file working-tree patch from a nested cwd", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const pathService = yield* Path.Path;
+        yield* writeTextFile(cwd, "nested/.keep", "");
+        yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+        const result = yield* driver.getReviewDiffFilePatch({
+          cwd: pathService.join(cwd, "nested"),
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+        });
+
+        assert.include(result.diff, "README.md");
+        assert.include(result.diff, "+# changed");
+        assert.strictEqual(result.truncated, false);
+      }),
+    );
+
+    it.effect("rejects a review file patch path outside the repository root", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        const error = yield* driver
+          .getReviewDiffFilePatch({
+            cwd,
+            sourceKind: "working-tree",
+            changeType: "change",
+            baseRef: "HEAD",
+            headRef: null,
+            oldPath: "../outside",
+            newPath: "../outside",
+          })
+          .pipe(Effect.flip);
+
+        assert.deepInclude(error, {
+          _tag: "GitCommandError",
+          operation: "GitVcsDriver.getReviewDiffFilePatch",
+          detail: "Diff file '../outside' resolves outside the review workspace.",
+        });
+      }),
+    );
+
+    it.effect("honors ignoreWhitespace on a one-file patch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "README.md", "#  test\n");
+
+        const included = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+          ignoreWhitespace: false,
+        });
+        const ignored = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+          ignoreWhitespace: true,
+        });
+
+        assert.isNotEmpty(included.diff);
+        assert.strictEqual(ignored.diff.trim(), "");
+      }),
+    );
+
+    it.effect("returns a one-file branch-range patch against the merge base", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["checkout", "-b", "feature/patch"]);
+        yield* writeTextFile(cwd, "README.md", "# branch\n");
+        yield* git(cwd, ["add", "README.md"]);
+        yield* git(cwd, ["commit", "-m", "change"]);
+
+        const result = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "branch-range",
+          changeType: "change",
+          baseRef: initialBranch,
+          headRef: "feature/patch",
+          oldPath: "README.md",
+          newPath: "README.md",
+        });
+
+        assert.include(result.diff, "+# branch");
+        assert.strictEqual(result.truncated, false);
+      }),
+    );
+
+    it.effect("returns a one-file patch for an untracked working-tree file", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "scratch.ts", "export const scratch = true;\n");
+
+        const result = yield* driver.getReviewDiffFilePatch({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "new",
+          baseRef: "HEAD",
+          headRef: null,
+          oldPath: "scratch.ts",
+          newPath: "scratch.ts",
+        });
+
+        assert.include(result.diff, "scratch.ts");
+        assert.include(result.diff, "+export const scratch = true;");
+        assert.strictEqual(result.truncated, false);
+      }),
+    );
+
+    it.effect("appends the truncation marker only when a patch is cut", () =>
+      Effect.sync(() => {
+        assert.strictEqual(
+          appendReviewDiffTruncationMarker("diff --git a/README.md", false),
+          "diff --git a/README.md",
+        );
+        assert.strictEqual(
+          appendReviewDiffTruncationMarker("diff --git a/README.md", true),
+          "diff --git a/README.md\n\n[truncated]",
+        );
+        assert.strictEqual(
+          appendReviewDiffTruncationMarker("diff --git a/README.md\n\n[truncated]", true),
+          "diff --git a/README.md\n\n[truncated]",
+        );
       }),
     );
   });

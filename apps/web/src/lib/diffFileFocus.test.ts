@@ -9,6 +9,7 @@ import {
   clampDiffFileTreeMaxWidth,
   collapseAllExcept,
   didRevealRequestChange,
+  shouldHoldDiffFileReveal,
   diffHunkNavLabel,
   firstHunkScrollTarget,
   hunkScrollTarget,
@@ -17,6 +18,8 @@ import {
   shouldRenderDiffHunkNav,
   shouldShowDiffHunkNav,
   stepDiffHunkIndex,
+  sumManifestDiffStats,
+  toGitDiffTreeFiles,
   toTurnDiffTreeFiles,
   waitForFileDiffHydration,
 } from "./diffFileFocus";
@@ -364,6 +367,52 @@ describe("didRevealRequestChange", () => {
   });
 });
 
+describe("shouldHoldDiffFileReveal", () => {
+  it("holds the new file until the first-hunk scroll has landed", () => {
+    expect(
+      shouldHoldDiffFileReveal({
+        selectedFileKey: "file-b",
+        revealedFileKey: "file-a",
+        mountKey: "scope",
+        revealedMountKey: "scope",
+      }),
+    ).toBe(true);
+  });
+
+  it("holds again when the code view remounts the same path", () => {
+    expect(
+      shouldHoldDiffFileReveal({
+        selectedFileKey: "file-a",
+        revealedFileKey: "file-a",
+        mountKey: "turn:2",
+        revealedMountKey: "turn:1",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not hold after the first-hunk scroll for this file and mount", () => {
+    expect(
+      shouldHoldDiffFileReveal({
+        selectedFileKey: "file-a",
+        revealedFileKey: "file-a",
+        mountKey: "scope",
+        revealedMountKey: "scope",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not hold an empty pane", () => {
+    expect(
+      shouldHoldDiffFileReveal({
+        selectedFileKey: null,
+        revealedFileKey: null,
+        mountKey: "scope",
+        revealedMountKey: null,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("DIFF_FILE_TREE_VISIBLE_BY_DEFAULT", () => {
   it("opens the diff panel with the file tree shown", () => {
     expect(DIFF_FILE_TREE_VISIBLE_BY_DEFAULT).toBe(true);
@@ -390,5 +439,41 @@ describe("toTurnDiffTreeFiles", () => {
     expect(toTurnDiffTreeFiles([{ fileDiff, filePath: "src/renamed.ts" }])).toEqual([
       { path: "src/renamed.ts", kind: "change", additions: 4, deletions: 2 },
     ]);
+  });
+});
+
+describe("toGitDiffTreeFiles", () => {
+  it("maps manifest rows onto tree entries using changeType and null-safe stats", () => {
+    expect(
+      toGitDiffTreeFiles([
+        {
+          path: "src/new.ts",
+          changeType: "new",
+          additions: null,
+          deletions: null,
+        },
+        {
+          path: "src/old.ts",
+          changeType: "deleted",
+          additions: 0,
+          deletions: 3,
+        },
+      ]),
+    ).toEqual([
+      { path: "src/new.ts", kind: "new", additions: 0, deletions: 0 },
+      { path: "src/old.ts", kind: "deleted", additions: 0, deletions: 3 },
+    ]);
+  });
+});
+
+describe("sumManifestDiffStats", () => {
+  it("sums additions and deletions that are not null", () => {
+    expect(
+      sumManifestDiffStats([
+        { additions: 2, deletions: 1 },
+        { additions: null, deletions: 4 },
+        { additions: 3, deletions: null },
+      ]),
+    ).toEqual({ additions: 5, deletions: 5 });
   });
 });

@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { ReviewDiffPreviewSource } from "./review.ts";
+import {
+  ReviewDiffFilePatchInput,
+  ReviewDiffFilePatchResult,
+  ReviewDiffPreviewSource,
+} from "./review.ts";
 
 const decodeSource = Schema.decodeUnknownSync(ReviewDiffPreviewSource);
+const decodePatchInput = Schema.decodeUnknownSync(ReviewDiffFilePatchInput);
+const decodePatchResult = Schema.decodeUnknownSync(ReviewDiffFilePatchResult);
 
 const baseSource = {
   id: "branch-range",
@@ -11,7 +17,7 @@ const baseSource = {
   title: "Against main",
   baseRef: "main",
   headRef: "HEAD",
-  diff: "",
+  files: [],
   diffHash: "abc",
   truncated: false,
 };
@@ -42,5 +48,42 @@ describe("ReviewDiffPreviewSource commits", () => {
     expect(parsed.commits?.[0]?.subject).toBe("add the tree");
     expect(parsed.commitsTruncated).toBe(true);
     expect(parsed.commitsError).toBe(false);
+  });
+
+  it("decodes a file row and rejects a legacy diff string as required", () => {
+    const parsed = decodeSource({
+      ...baseSource,
+      files: [
+        {
+          path: "src/a.ts",
+          oldPath: null,
+          changeType: "change",
+          additions: 2,
+          deletions: 1,
+          binary: false,
+        },
+      ],
+    });
+    expect(parsed.files[0]?.path).toBe("src/a.ts");
+    expect(parsed).not.toHaveProperty("diff");
+  });
+
+  it("decodes a per-file patch request and result", () => {
+    const input = decodePatchInput({
+      cwd: "/repo",
+      sourceKind: "working-tree",
+      changeType: "change",
+      baseRef: "HEAD",
+      headRef: null,
+      oldPath: "src/a.ts",
+      newPath: "src/a.ts",
+      ignoreWhitespace: true,
+    });
+    expect(input.newPath).toBe("src/a.ts");
+    const result = decodePatchResult({
+      diff: "diff --git a/src/a.ts b/src/a.ts\n",
+      truncated: false,
+    });
+    expect(result.truncated).toBe(false);
   });
 });

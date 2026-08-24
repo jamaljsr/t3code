@@ -10,6 +10,8 @@ import {
   VcsUnsupportedOperationError,
   type ReviewDiffFileContentsInput,
   type ReviewDiffFileContentsResult,
+  type ReviewDiffFilePatchInput,
+  type ReviewDiffFilePatchResult,
   type ReviewDiffPreviewError,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewResult,
@@ -28,6 +30,9 @@ export class ReviewService extends Context.Service<
     readonly getDiffFileContents: (
       input: ReviewDiffFileContentsInput,
     ) => Effect.Effect<ReviewDiffFileContentsResult, ReviewDiffPreviewError>;
+    readonly getDiffFilePatch: (
+      input: ReviewDiffFilePatchInput,
+    ) => Effect.Effect<ReviewDiffFilePatchResult, ReviewDiffPreviewError>;
   }
 >()("t3/review/ReviewService") {}
 
@@ -63,7 +68,10 @@ export const make = Effect.gen(function* () {
   };
 
   const assertWorkspaceBoundCwd = Effect.fn("ReviewService.assertWorkspaceBoundCwd")(function* (
-    operation: "ReviewService.getDiffPreview" | "ReviewService.getDiffFileContents",
+    operation:
+      | "ReviewService.getDiffPreview"
+      | "ReviewService.getDiffFileContents"
+      | "ReviewService.getDiffFilePatch",
     cwd: string,
   ) {
     const [candidate, workspaceRoot, worktreesRoot] = yield* Effect.all([
@@ -82,7 +90,9 @@ export const make = Effect.gen(function* () {
       detail:
         operation === "ReviewService.getDiffPreview"
           ? "Review diff preview cwd must stay within the configured workspace root."
-          : "Review diff file contents cwd must stay within the configured workspace root.",
+          : operation === "ReviewService.getDiffFilePatch"
+            ? "Review diff file patch cwd must stay within the configured workspace root."
+            : "Review diff file contents cwd must stay within the configured workspace root.",
     });
   });
 
@@ -132,9 +142,27 @@ export const make = Effect.gen(function* () {
     return yield* git.getReviewDiffFileContents(input);
   });
 
+  const getDiffFilePatch: ReviewService["Service"]["getDiffFilePatch"] = Effect.fn(
+    "ReviewService.getDiffFilePatch",
+  )(function* (input) {
+    yield* assertWorkspaceBoundCwd("ReviewService.getDiffFilePatch", input.cwd);
+
+    const handle = yield* vcsRegistry.detect({ cwd: input.cwd, requestedKind: "auto" });
+    if (handle?.kind !== "git") {
+      return yield* new VcsUnsupportedOperationError({
+        operation: "ReviewService.getDiffFilePatch",
+        kind: handle?.kind ?? "unknown",
+        detail: "Unchanged diff expansion currently requires a Git repository.",
+      });
+    }
+
+    return yield* git.getReviewDiffFilePatch(input);
+  });
+
   return ReviewService.of({
     getDiffPreview,
     getDiffFileContents,
+    getDiffFilePatch,
   });
 });
 

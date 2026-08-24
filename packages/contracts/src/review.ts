@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { GitCommandError } from "./git.ts";
 import { VcsError } from "./vcs.ts";
 
@@ -22,13 +22,32 @@ export const ReviewDiffPreviewCommit = Schema.Struct({
 });
 export type ReviewDiffPreviewCommit = typeof ReviewDiffPreviewCommit.Type;
 
+export const ReviewDiffFileChangeType = Schema.Literals([
+  "change",
+  "rename-pure",
+  "rename-changed",
+  "new",
+  "deleted",
+]);
+export type ReviewDiffFileChangeType = typeof ReviewDiffFileChangeType.Type;
+
+export const ReviewDiffFile = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  oldPath: Schema.NullOr(TrimmedNonEmptyString),
+  changeType: ReviewDiffFileChangeType,
+  additions: Schema.NullOr(NonNegativeInt),
+  deletions: Schema.NullOr(NonNegativeInt),
+  binary: Schema.Boolean,
+});
+export type ReviewDiffFile = typeof ReviewDiffFile.Type;
+
 export const ReviewDiffPreviewSource = Schema.Struct({
   id: TrimmedNonEmptyString,
   kind: ReviewDiffPreviewSourceKind,
   title: TrimmedNonEmptyString,
   baseRef: Schema.NullOr(TrimmedNonEmptyString),
   headRef: Schema.NullOr(TrimmedNonEmptyString),
-  diff: Schema.String,
+  files: Schema.Array(ReviewDiffFile),
   diffHash: TrimmedNonEmptyString,
   truncated: Schema.Boolean,
   commits: Schema.optional(Schema.Array(ReviewDiffPreviewCommit)),
@@ -37,10 +56,28 @@ export const ReviewDiffPreviewSource = Schema.Struct({
 });
 export type ReviewDiffPreviewSource = typeof ReviewDiffPreviewSource.Type;
 
+export const ReviewDiffFilePatchInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  sourceKind: ReviewDiffPreviewSourceKind,
+  changeType: ReviewDiffFileChangeType,
+  baseRef: Schema.NullOr(TrimmedNonEmptyString),
+  headRef: Schema.NullOr(TrimmedNonEmptyString),
+  oldPath: TrimmedNonEmptyString,
+  newPath: TrimmedNonEmptyString,
+  ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
+});
+export type ReviewDiffFilePatchInput = typeof ReviewDiffFilePatchInput.Type;
+
+export const ReviewDiffFilePatchResult = Schema.Struct({
+  diff: Schema.String,
+  truncated: Schema.Boolean,
+});
+export type ReviewDiffFilePatchResult = typeof ReviewDiffFilePatchResult.Type;
+
 export const ReviewDiffFileContentsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   sourceKind: ReviewDiffPreviewSourceKind,
-  changeType: Schema.Literals(["change", "rename-pure", "rename-changed", "new", "deleted"]),
+  changeType: ReviewDiffFileChangeType,
   baseRef: Schema.NullOr(TrimmedNonEmptyString),
   headRef: Schema.NullOr(TrimmedNonEmptyString),
   oldPath: TrimmedNonEmptyString,

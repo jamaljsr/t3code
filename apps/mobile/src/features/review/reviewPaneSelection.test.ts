@@ -13,23 +13,23 @@ describe("resolveSelectedReviewFileId", () => {
     ).toBe("second");
   });
 
-  it("clears selection when the review section changes", () => {
+  it("falls back to the first file when the review section changes", () => {
     expect(
       resolveSelectedReviewFileId({
         selection: { sectionId: "turn-1", fileId: "first" },
         sectionId: "turn-2",
         availableFileIds: ["first"],
       }),
-    ).toBeNull();
+    ).toBe("first");
   });
 
-  it("clears a file that no longer exists in the diff", () => {
+  it("falls back to the first file when the previous id is missing", () => {
     expect(
       resolveSelectedReviewFileId({
         selection: { sectionId: "worktree", fileId: "removed" },
         sectionId: "worktree",
         availableFileIds: ["first", "second"],
       }),
-    ).toBeNull();
+    ).toBe("first");
   });
 });

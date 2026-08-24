@@ -1,6 +1,10 @@
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
 import type { ChangeTypes, FileDiffMetadata } from "@pierre/diffs/types";
-import type { OrchestrationCheckpointSummary, ReviewDiffPreviewSource } from "@t3tools/contracts";
+import type {
+  OrchestrationCheckpointSummary,
+  ReviewDiffFile,
+  ReviewDiffPreviewSource,
+} from "@t3tools/contracts";
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
 import * as Order from "effect/Order";
@@ -17,6 +21,11 @@ export interface ReviewSectionItem {
   readonly title: string;
   readonly subtitle: string | null;
   readonly diff: string | null;
+  readonly files: ReadonlyArray<ReviewDiffFile>;
+  readonly truncated: boolean;
+  readonly diffHash: string | null;
+  readonly baseRef: string | null;
+  readonly headRef: string | null;
   readonly isLoading: boolean;
 }
 
@@ -487,6 +496,228 @@ function buildRenderableRows(file: FileDiffMetadata): ReadonlyArray<ReviewRender
   return rows;
 }
 
+const HUNK_HEADER_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+function splitFileLines(contents: string): ReadonlyArray<string> {
+  if (contents.length === 0) {
+    return [];
+  }
+  const lines = contents.split("\n");
+  if (lines[lines.length - 1] === "") {
+    return lines.slice(0, -1);
+  }
+  return lines;
+}
+
+function parseHunkHeader(header: string): {
+  readonly oldStart: number;
+  readonly oldCount: number;
+  readonly newStart: number;
+  readonly newCount: number;
+} | null {
+  const match = HUNK_HEADER_RE.exec(header);
+  if (!match) {
+    return null;
+  }
+  return {
+    oldStart: Number(match[1]),
+    oldCount: match[2] === undefined ? 1 : Number(match[2]),
+    newStart: Number(match[3]),
+    newCount: match[4] === undefined ? 1 : Number(match[4]),
+  };
+}
+
+function makeHydratedContextRow(
+  file: ReviewRenderableFile,
+  oldLineNumber: number | null,
+  newLineNumber: number | null,
+  content: string,
+): ReviewRenderableLineRow {
+  return {
+    kind: "line",
+    id: `${file.cacheKey}:hydrate:${oldLineNumber ?? "none"}:${newLineNumber ?? "none"}`,
+    change: "context",
+    oldLineNumber,
+    newLineNumber,
+    content,
+    additionTokenIndex: null,
+    deletionTokenIndex: null,
+    comparison: null,
+  };
+}
+
+export function hydrateReviewRenderableFile(
+  file: ReviewRenderableFile,
+  oldContents: string,
+  newContents: string,
+): ReviewRenderableFile {
+  const oldLines = splitFileLines(oldContents);
+  const newLines = splitFileLines(newContents);
+  if (oldLines.length === 0 && newLines.length === 0) {
+    return file;
+  }
+
+  const hunks: {
+    readonly header: ReviewRenderableHunkRow;
+    readonly lines: ReviewRenderableLineRow[];
+    readonly oldStart: number;
+    readonly oldCount: number;
+    readonly newStart: number;
+    readonly newCount: number;
+  }[] = [];
+  let current: (typeof hunks)[number] | null = null;
+
+  for (const row of file.rows) {
+    if (row.kind === "hunk") {
+      const parsed = parseHunkHeader(row.header);
+      if (current) {
+        hunks.push(current);
+      }
+      current = {
+        header: row,
+        lines: [],
+        oldStart: parsed?.oldStart ?? 1,
+        oldCount: parsed?.oldCount ?? 0,
+        newStart: parsed?.newStart ?? 1,
+        newCount: parsed?.newCount ?? 0,
+      };
+      continue;
+    }
+    if (current) {
+      current.lines.push(row);
+    }
+  }
+  if (current) {
+    hunks.push(current);
+  }
+
+  const rows: ReviewRenderableRow[] = [];
+  let nextOld = 1;
+  let nextNew = 1;
+
+  const appendContext = (upToOld: number, upToNew: number) => {
+    while (nextOld < upToOld && nextNew < upToNew) {
+      rows.push(
+        makeHydratedContextRow(
+          file,
+          nextOld,
+          nextNew,
+          newLines[nextNew - 1] ?? oldLines[nextOld - 1] ?? "",
+        ),
+      );
+      nextOld += 1;
+      nextNew += 1;
+    }
+    while (nextOld < upToOld && nextOld <= oldLines.length && newLines.length === 0) {
+      rows.push(makeHydratedContextRow(file, nextOld, null, oldLines[nextOld - 1] ?? ""));
+      nextOld += 1;
+    }
+    while (nextNew < upToNew && nextNew <= newLines.length && oldLines.length === 0) {
+      rows.push(makeHydratedContextRow(file, null, nextNew, newLines[nextNew - 1] ?? ""));
+      nextNew += 1;
+    }
+  };
+
+  for (const hunk of hunks) {
+    const oldStart = hunk.oldStart === 0 ? nextOld : hunk.oldStart;
+    const newStart = hunk.newStart === 0 ? nextNew : hunk.newStart;
+    appendContext(oldStart, newStart);
+    rows.push(hunk.header, ...hunk.lines);
+    if (hunk.oldCount > 0 && hunk.oldStart > 0) {
+      nextOld = hunk.oldStart + hunk.oldCount;
+    }
+    if (hunk.newCount > 0 && hunk.newStart > 0) {
+      nextNew = hunk.newStart + hunk.newCount;
+    }
+  }
+
+  appendContext(oldLines.length + 1, newLines.length + 1);
+  while (nextOld <= oldLines.length && nextNew <= newLines.length) {
+    rows.push(
+      makeHydratedContextRow(
+        file,
+        nextOld,
+        nextNew,
+        newLines[nextNew - 1] ?? oldLines[nextOld - 1] ?? "",
+      ),
+    );
+    nextOld += 1;
+    nextNew += 1;
+  }
+  while (nextOld <= oldLines.length && newLines.length === 0) {
+    rows.push(makeHydratedContextRow(file, nextOld, null, oldLines[nextOld - 1] ?? ""));
+    nextOld += 1;
+  }
+  while (nextNew <= newLines.length && oldLines.length === 0) {
+    rows.push(makeHydratedContextRow(file, null, nextNew, newLines[nextNew - 1] ?? ""));
+    nextNew += 1;
+  }
+
+  return {
+    ...file,
+    rows,
+  };
+}
+
+export function sumReviewManifestStats(
+  files: ReadonlyArray<{
+    readonly additions: number | null;
+    readonly deletions: number | null;
+  }>,
+): { readonly additions: number; readonly deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const file of files) {
+    if (file.additions !== null) {
+      additions += file.additions;
+    }
+    if (file.deletions !== null) {
+      deletions += file.deletions;
+    }
+  }
+  return { additions, deletions };
+}
+
+export function compareReviewFilePaths(left: string, right: string): number {
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+}
+
+export interface ReviewNavigatorFile {
+  readonly id: string;
+  readonly path: string;
+  readonly additions: number | null;
+  readonly deletions: number | null;
+  readonly binary: boolean;
+}
+
+export function toGitReviewNavigatorFiles(
+  files: ReadonlyArray<ReviewDiffFile>,
+): ReadonlyArray<ReviewNavigatorFile> {
+  return [...files]
+    .sort((left, right) => compareReviewFilePaths(left.path, right.path))
+    .map((file) => ({
+      id: file.path,
+      path: file.path,
+      additions: file.additions,
+      deletions: file.deletions,
+      binary: file.binary,
+    }));
+}
+
+export function toTurnReviewNavigatorFiles(
+  files: ReadonlyArray<ReviewRenderableFile>,
+): ReadonlyArray<ReviewNavigatorFile> {
+  return [...files]
+    .sort((left, right) => compareReviewFilePaths(left.path, right.path))
+    .map((file) => ({
+      id: file.id,
+      path: file.path,
+      additions: file.additions,
+      deletions: file.deletions,
+      binary: false,
+    }));
+}
+
 function mapRenderableFile(file: FileDiffMetadata): ReviewRenderableFile {
   const path = stripGitPrefix(file.name) ?? stripGitPrefix(file.prevName) ?? file.name;
   const previousPath = stripGitPrefix(file.prevName);
@@ -541,6 +772,11 @@ export function buildReviewSectionItems(input: {
         title: checkpointTitle(checkpoint),
         subtitle: checkpointSubtitle(checkpoint),
         diff: input.turnDiffById[id] ?? null,
+        files: [],
+        truncated: false,
+        diffHash: null,
+        baseRef: null,
+        headRef: null,
         isLoading: input.loadingTurnIds[id] === true,
       };
     },
@@ -551,7 +787,12 @@ export function buildReviewSectionItems(input: {
     kind: section.kind,
     title: section.title,
     subtitle: gitSubtitle(section),
-    diff: section.diff,
+    diff: null,
+    files: section.files,
+    truncated: section.truncated,
+    diffHash: section.diffHash,
+    baseRef: section.baseRef,
+    headRef: section.headRef,
     isLoading: false,
   }));
   const hasDirtyWorktreeItem = gitItems.some((item) => item.id === DIRTY_WORKTREE_SECTION_ID);
@@ -564,6 +805,11 @@ export function buildReviewSectionItems(input: {
             title: DIRTY_WORKTREE_TITLE,
             subtitle: DIRTY_WORKTREE_SUBTITLE,
             diff: null,
+            files: [],
+            truncated: false,
+            diffHash: null,
+            baseRef: null,
+            headRef: null,
             isLoading: true,
           } satisfies ReviewSectionItem,
           ...gitItems,

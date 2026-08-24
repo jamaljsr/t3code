@@ -1989,8 +1989,41 @@ label:has(> select#reasoning-effort) select {
 /* Diffs live directly on the panel canvas. Normal chat code blocks may use a
    raised code surface, but carrying that fill into the diff creates a card-like
    rectangle that does not belong in the panel. */
+.diff-render-surface,
+.diff-hunk-scrollbar {
+  --app-scrollbar-width: 12px;
+}
+
 .diff-render-surface {
   --code-background: var(--background);
+  scrollbar-width: auto;
+}
+
+.diff-hunk-scrollbar {
+  pointer-events: none;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 1;
+  width: var(--app-scrollbar-width);
+}
+
+.diff-hunk-scrollbar-mark {
+  position: absolute;
+  min-height: 3px;
+  border-radius: 1px;
+}
+
+.diff-hunk-scrollbar-mark-add {
+  inset-inline-start: 50%;
+  inset-inline-end: 1px;
+  background: var(--diffs-addition-base, var(--success));
+}
+
+.diff-hunk-scrollbar-mark-delete {
+  inset-inline-start: 1px;
+  inset-inline-end: 50%;
+  background: var(--diffs-deletion-base, var(--destructive));
 }
 
 .diff-render-file,

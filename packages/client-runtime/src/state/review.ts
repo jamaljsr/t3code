@@ -22,20 +22,11 @@ export function createReviewEnvironmentAtoms<R, E>(
       label: "environment-data:review:diff-file-contents",
       tag: WS_METHODS.reviewGetDiffFileContents,
       scheduler: diffFileScheduler,
-      concurrency: {
-        mode: "singleFlight",
-        key: ({ environmentId, input }) =>
-          JSON.stringify([
-            environmentId,
-            input.cwd,
-            input.sourceKind,
-            input.baseRef,
-            input.headRef,
-            input.oldPath,
-            input.newPath,
-            input.changeType,
-          ]),
-      },
+    }),
+    diffFilePatch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:review:diff-file-patch",
+      tag: WS_METHODS.reviewGetDiffFilePatch,
+      scheduler: diffFileScheduler,
     }),
   };
 }
