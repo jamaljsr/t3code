@@ -121,7 +121,8 @@ An empty database is a bad test. Seed your worktree's `.t3` with a copy of real 
 
 ## Plans and work artifacts
 
-- Do not commit implementation plans, research notes, or agent scratch files. Keep temporary working material outside the worktree. `.plans/` is gitignored only as a safety net for legacy tooling.
+- Commit design documents to `docs/superpowers/specs/` using the `YYYY-MM-DD-<topic>-design.md` naming convention.
+- Do not commit implementation plans, research notes, or agent scratch files. Keep temporary working material in `.plans/` which is gitignored and also a safety net for legacy tooling.
 - Track active maintainer work in the GitHub issue or project item that owns it. External proposals follow `CONTRIBUTING.md` and belong in Ideas discussions.
 - Put durable architecture, constraints, and decisions in `docs/internals/`. Update those docs when the product changes so agents find current facts instead of abandoned intentions.
 - A merged PR is the implementation record. Close or update its tracking item when the work lands; do not preserve a second checklist in the repository.
