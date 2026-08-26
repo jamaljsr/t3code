@@ -29,6 +29,10 @@ Implementation: `apps/web/src/components/ThreadDiffPanel.tsx`.
 
 ## Folding upstream
 
+Completed folds should leave a maintenance note with the source refs, conflict resolutions,
+semantic repairs, and compatibility audit. See
+[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example.
+
 On the machine the phone pairs to (`~/.t3`):
 
 - Merge, do not rebase the whole fork.
