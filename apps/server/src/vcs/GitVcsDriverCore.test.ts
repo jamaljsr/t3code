@@ -880,6 +880,9 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
             { path: "two.ts", changeType: "new" },
           ],
         );
+        assert.isTrue((branchRange?.diff ?? "").includes("diff --git"));
+        assert.isTrue((branchRange?.diff ?? "").includes("one.ts"));
+        assert.isTrue((branchRange?.diff ?? "").includes("two.ts"));
       }),
     );
 
@@ -917,6 +920,7 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         assert.isNotEmpty(workingTree?.files);
         assert.strictEqual(workingTree?.files[0]?.path, "README.md");
+        assert.isTrue((workingTree?.diff ?? "").includes("README.md"));
         assert.deepStrictEqual(branchRange?.commits, []);
         assert.strictEqual(branchRange?.commitsTruncated, false);
         assert.strictEqual(branchRange?.commitsError, true);
@@ -983,27 +987,30 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
-    it.effect("includes untracked worktree files as new without a patch", () =>
-      Effect.gen(function* () {
-        const cwd = yield* makeTmpDir();
-        yield* initRepoWithCommit(cwd);
-        const driver = yield* GitVcsDriver.GitVcsDriver;
-        yield* writeTextFile(cwd, "scratch.ts", "export const scratch = 1;\n");
+    it.effect(
+      "includes untracked worktree files as new in the manifest and in the unified diff",
+      () =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          yield* initRepoWithCommit(cwd);
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          yield* writeTextFile(cwd, "scratch.ts", "export const scratch = 1;\n");
 
-        const preview = yield* driver.getReviewDiffPreview({ cwd });
-        const workingTree = preview.sources.find((source) => source.kind === "working-tree");
-        const scratch = workingTree?.files.find((file) => file.path === "scratch.ts");
+          const preview = yield* driver.getReviewDiffPreview({ cwd });
+          const workingTree = preview.sources.find((source) => source.kind === "working-tree");
+          const scratch = workingTree?.files.find((file) => file.path === "scratch.ts");
 
-        assert.deepStrictEqual(scratch, {
-          path: "scratch.ts",
-          oldPath: null,
-          changeType: "new",
-          additions: null,
-          deletions: null,
-          binary: false,
-        });
-        assert.isUndefined((workingTree as { diff?: unknown } | undefined)?.diff);
-      }),
+          assert.deepStrictEqual(scratch, {
+            path: "scratch.ts",
+            oldPath: null,
+            changeType: "new",
+            additions: null,
+            deletions: null,
+            binary: false,
+          });
+          assert.isTrue((workingTree?.diff ?? "").includes("scratch.ts"));
+          assert.isTrue((workingTree?.diff ?? "").includes("diff --git"));
+        }),
     );
 
     it.effect("marks a preview source truncated when a listing was cut", () =>

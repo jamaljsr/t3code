@@ -1,11 +1,25 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
+import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
   ReviewDiffFilePatchInput,
   ReviewDiffFilePatchResult,
   ReviewDiffPreviewSource,
+  ReviewDiffPreviewSourceKind,
 } from "./review.ts";
+
+const StoreV103ReviewDiffPreviewSource = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  kind: ReviewDiffPreviewSourceKind,
+  title: TrimmedNonEmptyString,
+  baseRef: Schema.NullOr(TrimmedNonEmptyString),
+  headRef: Schema.NullOr(TrimmedNonEmptyString),
+  diff: Schema.String,
+  diffHash: TrimmedNonEmptyString,
+  truncated: Schema.Boolean,
+});
+const decodeStoreV103 = Schema.decodeUnknownSync(StoreV103ReviewDiffPreviewSource);
 
 const decodeSource = Schema.decodeUnknownSync(ReviewDiffPreviewSource);
 const decodePatchInput = Schema.decodeUnknownSync(ReviewDiffFilePatchInput);
@@ -24,7 +38,7 @@ const baseSource = {
 
 describe("ReviewDiffPreviewSource commits", () => {
   it("decodes a source with no commit fields (older servers)", () => {
-    const parsed = decodeSource(baseSource);
+    const parsed = decodeSource({ ...baseSource, diff: "" });
     expect(parsed.commits).toBeUndefined();
     expect(parsed.commitsTruncated).toBeUndefined();
     expect(parsed.commitsError).toBeUndefined();
@@ -33,6 +47,7 @@ describe("ReviewDiffPreviewSource commits", () => {
   it("decodes commits on a branch-range source", () => {
     const parsed = decodeSource({
       ...baseSource,
+      diff: "",
       commits: [
         {
           oid: "0123456789abcdef0123456789abcdef01234567",
@@ -50,9 +65,11 @@ describe("ReviewDiffPreviewSource commits", () => {
     expect(parsed.commitsError).toBe(false);
   });
 
-  it("decodes a file row and rejects a legacy diff string as required", () => {
+  it("requires diff and keeps files on the same source", () => {
+    expect(() => decodeSource(baseSource)).toThrow();
     const parsed = decodeSource({
       ...baseSource,
+      diff: "diff --git a/src/a.ts b/src/a.ts\n",
       files: [
         {
           path: "src/a.ts",
@@ -64,8 +81,30 @@ describe("ReviewDiffPreviewSource commits", () => {
         },
       ],
     });
+    expect(parsed.diff).toBe("diff --git a/src/a.ts b/src/a.ts\n");
     expect(parsed.files[0]?.path).toBe("src/a.ts");
-    expect(parsed).not.toHaveProperty("diff");
+  });
+
+  it("lets a 1.0.3-shaped decoder ignore files and commits", () => {
+    const parsed = decodeStoreV103({
+      ...baseSource,
+      diff: "diff --git a/src/a.ts b/src/a.ts\n",
+      files: [
+        {
+          path: "src/a.ts",
+          oldPath: null,
+          changeType: "change",
+          additions: 2,
+          deletions: 1,
+          binary: false,
+        },
+      ],
+      commits: [],
+      commitsTruncated: false,
+      commitsError: false,
+    });
+    expect(parsed.diff).toBe("diff --git a/src/a.ts b/src/a.ts\n");
+    expect(parsed).not.toHaveProperty("files");
   });
 
   it("decodes a per-file patch request and result", () => {

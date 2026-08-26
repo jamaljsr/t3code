@@ -146,3 +146,4 @@ Full glossary with file links: `docs/internals/glossary.md`
 
 - Don't verify with browsers or computer use unless the user explicitly agrees or requests it.
 - Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
+- If `docs/internals/personal-overlay.md` exists, this checkout is a personal overlay. Follow it over any assumption that web, desktop, and mobile ship together.

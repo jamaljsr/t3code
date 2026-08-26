@@ -1,0 +1,15 @@
+---
+description: Personal overlay fork — App Store mobile is the protocol floor; additive contracts only
+alwaysApply: true
+---
+
+# Personal overlay
+
+This checkout is a personal overlay of pingdotgg/t3code. It is not upstream.
+
+- Daily mobile is the **App Store** binary, not `apps/mobile` in this repo. Those clients do not ship together.
+- Protocol floor: every field that store mobile still decodes. Additive only: new optional fields, new RPCs. Never remove or rename a field a store client requires.
+- `ReviewDiffPreviewSource` must keep `diff` (unified patch) **and** `files`. Desktop reads `files`; store 1.0.3 reads `diff`.
+- New UI belongs in new files `main` will never touch. `DiffPanel.tsx` is a re-export of `ThreadDiffPanel.tsx`. Future merges: keep-ours on that re-export.
+- Do not add a viewer toggle. Do not assume a Personal Team iOS install (7-day expiry).
+- Longer policy: `docs/internals/personal-overlay.md`.

@@ -47,6 +47,7 @@ export const ReviewDiffPreviewSource = Schema.Struct({
   title: TrimmedNonEmptyString,
   baseRef: Schema.NullOr(TrimmedNonEmptyString),
   headRef: Schema.NullOr(TrimmedNonEmptyString),
+  diff: Schema.String,
   files: Schema.Array(ReviewDiffFile),
   diffHash: TrimmedNonEmptyString,
   truncated: Schema.Boolean,
