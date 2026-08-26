@@ -1,6 +1,7 @@
 import type {
   OrchestrationEvent,
   OrchestrationThreadActivity,
+  OrchestrationThreadDetailEvent,
   OrchestrationThreadDetailSnapshot,
 } from "@t3tools/contracts";
 
@@ -556,6 +557,10 @@ export function projectThreadDetailSnapshot(
   };
 }
 
+export function projectActivityEvent(
+  event: OrchestrationThreadDetailEvent,
+): OrchestrationThreadDetailEvent;
+export function projectActivityEvent(event: OrchestrationEvent): OrchestrationEvent;
 export function projectActivityEvent(event: OrchestrationEvent): OrchestrationEvent {
   if (event.type !== "thread.activity-appended") {
     return event;

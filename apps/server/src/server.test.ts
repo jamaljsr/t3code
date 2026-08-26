@@ -5,6 +5,7 @@ import * as NodeCrypto from "node:crypto";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 import {
+  ApprovalRequestId,
   AuthAccessTokenType,
   AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
@@ -77,6 +78,22 @@ import { vi } from "vite-plus/test";
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 const decodeTransferThreadSnapshot = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationThreadDetailSnapshot),
+);
+const decodeStoreV103ThreadEvent = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    kind: Schema.Literal("event"),
+    event: Schema.Union([
+      Schema.Struct({
+        type: Schema.Literal("thread.message-sent"),
+      }),
+      Schema.Struct({
+        type: Schema.Literal("thread.approval-response-requested"),
+        payload: Schema.Struct({
+          decision: Schema.Literals(["accept", "acceptForSession", "decline", "cancel"]),
+        }),
+      }),
+    ]),
+  }),
 );
 
 const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function* <A>(
@@ -6420,6 +6437,85 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(items[0]?.kind, "snapshot");
       assert.equal(items[1]?.kind, "event");
       assert.equal(items[1]?.kind === "event" ? items[1].event.sequence : null, 2);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("keeps acceptAlways approval responses off the legacy thread stream", () =>
+    Effect.gen(function* () {
+      const thread = makeDefaultOrchestrationReadModel().threads[0]!;
+      const liveEvents = yield* Queue.unbounded<OrchestrationEvent>();
+      const now = "2026-01-01T00:00:01.000Z";
+      const approvalResponseEvent = {
+        sequence: 2,
+        eventId: EventId.make("event-approval-response"),
+        aggregateKind: "thread",
+        aggregateId: defaultThreadId,
+        occurredAt: now,
+        commandId: CommandId.make("command-approval-response"),
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        type: "thread.approval-response-requested",
+        payload: {
+          threadId: defaultThreadId,
+          requestId: ApprovalRequestId.make("request-1"),
+          decision: "acceptAlways",
+          createdAt: now,
+        },
+      } satisfies Extract<OrchestrationEvent, { type: "thread.approval-response-requested" }>;
+      const messageEvent = {
+        sequence: 3,
+        eventId: EventId.make("event-after-approval-response"),
+        aggregateKind: "thread",
+        aggregateId: defaultThreadId,
+        occurredAt: now,
+        commandId: null,
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        type: "thread.message-sent",
+        payload: {
+          threadId: defaultThreadId,
+          messageId: MessageId.make("message-after-approval-response"),
+          role: "assistant",
+          text: "Still connected",
+          turnId: null,
+          streaming: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      } satisfies Extract<OrchestrationEvent, { type: "thread.message-sent" }>;
+
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            streamDomainEvents: Stream.fromQueue(liveEvents),
+          },
+          projectionSnapshotQuery: {
+            getThreadDetailSnapshot: () =>
+              Effect.gen(function* () {
+                yield* Queue.offer(liveEvents, approvalResponseEvent);
+                yield* Queue.offer(liveEvents, messageEvent);
+                return Option.some({ snapshotSequence: 1, thread });
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const items = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+            threadId: defaultThreadId,
+          }).pipe(Stream.take(2), Stream.runCollect),
+        ),
+      ).pipe(Effect.timeout("2 seconds"));
+
+      assert.equal(items[0]?.kind, "snapshot");
+      const eventItem = items[1];
+      assert.equal(eventItem?.kind, "event");
+      assert.equal(eventItem?.kind === "event" ? eventItem.event.sequence : null, 3);
+      yield* decodeStoreV103ThreadEvent(eventItem);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 

@@ -18,6 +18,7 @@ import {
   OrchestrationProposedPlan,
   OrchestrationSession,
   OrchestrationThread,
+  OrchestrationThreadStreamItem,
   OrchestrationThreadShell,
   ProjectCreateCommand,
   ThreadMetaUpdatedPayload,
@@ -45,6 +46,9 @@ const decodeOrchestrationProposedPlan = Schema.decodeUnknownEffect(Orchestration
 const decodeOrchestrationSession = Schema.decodeUnknownEffect(OrchestrationSession);
 const decodeOrchestrationThread = Schema.decodeUnknownEffect(OrchestrationThread);
 const decodeOrchestrationThreadShell = Schema.decodeUnknownEffect(OrchestrationThreadShell);
+const decodeOrchestrationThreadStreamItem = Schema.decodeUnknownEffect(
+  OrchestrationThreadStreamItem,
+);
 const encodeThreadCreatedPayload = Schema.encodeEffect(ThreadCreatedPayload);
 
 function getOptionValue(
@@ -58,6 +62,36 @@ const decodeOrchestrationCommand = Schema.decodeUnknownEffect(OrchestrationComma
 const decodeOrchestrationEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
 const decodeThreadMetaUpdatedPayload = Schema.decodeUnknownEffect(ThreadMetaUpdatedPayload);
 const decodeDispatchCommandError = Schema.decodeUnknownEffect(OrchestrationDispatchCommandError);
+
+it.effect("rejects approval responses from the thread subscription wire contract", () =>
+  Effect.gen(function* () {
+    const result = yield* Effect.exit(
+      decodeOrchestrationThreadStreamItem({
+        kind: "event",
+        event: {
+          sequence: 1,
+          eventId: "event-1",
+          aggregateKind: "thread",
+          aggregateId: "thread-1",
+          occurredAt: "2026-01-01T00:00:00.000Z",
+          commandId: "command-1",
+          causationEventId: null,
+          correlationId: null,
+          metadata: {},
+          type: "thread.approval-response-requested",
+          payload: {
+            threadId: "thread-1",
+            requestId: "request-1",
+            decision: "acceptAlways",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        },
+      }),
+    );
+
+    assert.strictEqual(result._tag, "Failure");
+  }),
+);
 
 it.effect("decodes a dispatch error after its bootstrap thread was deleted", () =>
   Effect.gen(function* () {

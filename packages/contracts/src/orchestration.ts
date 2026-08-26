@@ -1377,6 +1377,42 @@ const EventBaseFields = {
   metadata: OrchestrationEventMetadata,
 } as const;
 
+const ThreadMessageSentEvent = Schema.Struct({
+  ...EventBaseFields,
+  type: Schema.Literal("thread.message-sent"),
+  payload: ThreadMessageSentPayload,
+});
+const ThreadDeletedEvent = Schema.Struct({
+  ...EventBaseFields,
+  type: Schema.Literal("thread.deleted"),
+  payload: ThreadDeletedPayload,
+});
+const ThreadRevertedEvent = Schema.Struct({
+  ...EventBaseFields,
+  type: Schema.Literal("thread.reverted"),
+  payload: ThreadRevertedPayload,
+});
+const ThreadSessionSetEvent = Schema.Struct({
+  ...EventBaseFields,
+  type: Schema.Literal("thread.session-set"),
+  payload: ThreadSessionSetPayload,
+});
+const ThreadProposedPlanUpsertedEvent = Schema.Struct({
+  ...EventBaseFields,
+  type: Schema.Literal("thread.proposed-plan-upserted"),
+  payload: ThreadProposedPlanUpsertedPayload,
+});
+const ThreadTurnDiffCompletedEvent = Schema.Struct({
+  ...EventBaseFields,
+  type: Schema.Literal("thread.turn-diff-completed"),
+  payload: ThreadTurnDiffCompletedPayload,
+});
+const ThreadActivityAppendedEvent = Schema.Struct({
+  ...EventBaseFields,
+  type: Schema.Literal("thread.activity-appended"),
+  payload: ThreadActivityAppendedPayload,
+});
+
 export const OrchestrationEvent = Schema.Union([
   Schema.Struct({
     ...EventBaseFields,
@@ -1398,11 +1434,7 @@ export const OrchestrationEvent = Schema.Union([
     type: Schema.Literal("thread.created"),
     payload: ThreadCreatedPayload,
   }),
-  Schema.Struct({
-    ...EventBaseFields,
-    type: Schema.Literal("thread.deleted"),
-    payload: ThreadDeletedPayload,
-  }),
+  ThreadDeletedEvent,
   Schema.Struct({
     ...EventBaseFields,
     type: Schema.Literal("thread.archived"),
@@ -1463,11 +1495,7 @@ export const OrchestrationEvent = Schema.Union([
     type: Schema.Literal("thread.interaction-mode-set"),
     payload: ThreadInteractionModeSetPayload,
   }),
-  Schema.Struct({
-    ...EventBaseFields,
-    type: Schema.Literal("thread.message-sent"),
-    payload: ThreadMessageSentPayload,
-  }),
+  ThreadMessageSentEvent,
   Schema.Struct({
     ...EventBaseFields,
     type: Schema.Literal("thread.turn-start-requested"),
@@ -1493,38 +1521,32 @@ export const OrchestrationEvent = Schema.Union([
     type: Schema.Literal("thread.checkpoint-revert-requested"),
     payload: ThreadCheckpointRevertRequestedPayload,
   }),
-  Schema.Struct({
-    ...EventBaseFields,
-    type: Schema.Literal("thread.reverted"),
-    payload: ThreadRevertedPayload,
-  }),
+  ThreadRevertedEvent,
   Schema.Struct({
     ...EventBaseFields,
     type: Schema.Literal("thread.session-stop-requested"),
     payload: ThreadSessionStopRequestedPayload,
   }),
-  Schema.Struct({
-    ...EventBaseFields,
-    type: Schema.Literal("thread.session-set"),
-    payload: ThreadSessionSetPayload,
-  }),
-  Schema.Struct({
-    ...EventBaseFields,
-    type: Schema.Literal("thread.proposed-plan-upserted"),
-    payload: ThreadProposedPlanUpsertedPayload,
-  }),
-  Schema.Struct({
-    ...EventBaseFields,
-    type: Schema.Literal("thread.turn-diff-completed"),
-    payload: ThreadTurnDiffCompletedPayload,
-  }),
-  Schema.Struct({
-    ...EventBaseFields,
-    type: Schema.Literal("thread.activity-appended"),
-    payload: ThreadActivityAppendedPayload,
-  }),
+  ThreadSessionSetEvent,
+  ThreadProposedPlanUpsertedEvent,
+  ThreadTurnDiffCompletedEvent,
+  ThreadActivityAppendedEvent,
 ]);
 export type OrchestrationEvent = typeof OrchestrationEvent.Type;
+
+// Thread subscriptions intentionally expose only projection-bearing detail events
+// plus the legacy deletion event. Keeping command intent off this wire also prevents
+// newer enum values from reaching older clients whose decoders cannot recognize them.
+export const OrchestrationThreadDetailEvent = Schema.Union([
+  ThreadMessageSentEvent,
+  ThreadDeletedEvent,
+  ThreadProposedPlanUpsertedEvent,
+  ThreadActivityAppendedEvent,
+  ThreadTurnDiffCompletedEvent,
+  ThreadRevertedEvent,
+  ThreadSessionSetEvent,
+]);
+export type OrchestrationThreadDetailEvent = typeof OrchestrationThreadDetailEvent.Type;
 
 export const OrchestrationThreadStreamItem = Schema.Union([
   Schema.Struct({
@@ -1536,7 +1558,7 @@ export const OrchestrationThreadStreamItem = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal("event"),
-    event: OrchestrationEvent,
+    event: OrchestrationThreadDetailEvent,
   }),
 ]);
 export type OrchestrationThreadStreamItem = typeof OrchestrationThreadStreamItem.Type;
