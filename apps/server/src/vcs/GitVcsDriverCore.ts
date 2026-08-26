@@ -2318,7 +2318,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
                 },
               ),
             { concurrency: 4 },
-          );
+          ).pipe(Effect.orElseSucceed(() => []));
     const untrackedDiff = joinReviewDiffParts(untrackedDiffResults.map((result) => result.stdout));
     const untrackedDiffTruncated = untrackedDiffResults.some((result) => result.stdoutTruncated);
     const workingTreeManifest = buildReviewDiffManifest({
