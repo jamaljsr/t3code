@@ -38,7 +38,7 @@ const baseSource = {
 
 describe("ReviewDiffPreviewSource commits", () => {
   it("decodes a source with no commit fields (older servers)", () => {
-    const parsed = decodeSource(baseSource);
+    const parsed = decodeSource({ ...baseSource, diff: "" });
     expect(parsed.commits).toBeUndefined();
     expect(parsed.commitsTruncated).toBeUndefined();
     expect(parsed.commitsError).toBeUndefined();
@@ -47,6 +47,7 @@ describe("ReviewDiffPreviewSource commits", () => {
   it("decodes commits on a branch-range source", () => {
     const parsed = decodeSource({
       ...baseSource,
+      diff: "",
       commits: [
         {
           oid: "0123456789abcdef0123456789abcdef01234567",
