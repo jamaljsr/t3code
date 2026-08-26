@@ -12,7 +12,7 @@
 
 Store clients decode with **their** schemas. Version skew is a warning, not a gate. A missing required key becomes `Missing key at ...` on one RPC.
 
-Forbidden: removing `ReviewDiffPreviewSource.diff` because desktop no longer reads it. That broke git-scope review on 1.0.3 (`["value"]["sources"][0]["diff"]`). Turn diffs kept working (different RPC).
+Forbidden: removing `ReviewDiffPreviewSource.diff` because desktop no longer reads it. Overlay #4 (`2aee5df2b`, "Review diffs one file at a time") did exactly that, and broke git-scope review on 1.0.3 (`["value"]["sources"][0]["diff"]`). Turn diffs kept working (different RPC).
 
 Required shape for `review.getDiffPreview` sources:
 
