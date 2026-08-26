@@ -25,7 +25,6 @@ The panel still stacks every file. Expand all on a large branch is the same prob
 - Per-commit patch scoping (commit list stays browse-only).
 - Command palette or keybinding for next/previous file.
 - Previous/next controls when the tree is hidden.
-- Dual-serving the old `diff` string for older clients.
 - Inventing a client-side diff from contents only (no patch RPC).
 - Pull-request Code tab.
 
@@ -38,17 +37,17 @@ The panel still stacks every file. Expand all on a large branch is the same prob
 
 ## Decisions
 
-| Topic             | Choice                                                                                                   |
-| ----------------- | -------------------------------------------------------------------------------------------------------- |
-| Preview RPC scope | Working tree and branch only                                                                             |
-| Pane              | One file, every scope                                                                                    |
-| Default file      | First path in current tree sort, unless chat/store supplies a path                                       |
-| Hide tree         | Toggle stays. Hidden tree means the current file only. No prev/next.                                     |
-| Expand all        | Removed. Per-file header collapse chevron removed.                                                       |
-| Git file open     | `getDiffFilePatch` + `getDiffFileContents` in parallel                                                   |
-| Paint             | Keep the current file up. Loader on the selected tree/list row immediately. Swap once both RPCs succeed. |
-| Turns             | Slice the existing checkpoint patch. No contents fetch.                                                  |
-| Old `diff` field  | Removed from `ReviewDiffPreviewSource`. Breaking. Web, desktop, and mobile ship together.                |
+| Topic             | Choice                                                                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Preview RPC scope | Working tree and branch only                                                                                                                                             |
+| Pane              | One file, every scope                                                                                                                                                    |
+| Default file      | First path in current tree sort, unless chat/store supplies a path                                                                                                       |
+| Hide tree         | Toggle stays. Hidden tree means the current file only. No prev/next.                                                                                                     |
+| Expand all        | Removed. Per-file header collapse chevron removed.                                                                                                                       |
+| Git file open     | `getDiffFilePatch` + `getDiffFileContents` in parallel                                                                                                                   |
+| Paint             | Keep the current file up. Loader on the selected tree/list row immediately. Swap once both RPCs succeed.                                                                 |
+| Turns             | Slice the existing checkpoint patch. No contents fetch.                                                                                                                  |
+| Old `diff` field  | **Kept** for App Store mobile. `files` is additive. Desktop ignores `diff`. Store 1.0.3 ignores `files`. Dual-serve. See `2026-08-25-personal-overlay-compat-design.md`. |
 
 ## Wire
 
@@ -56,7 +55,7 @@ The panel still stacks every file. Expand all on a large branch is the same prob
 
 Input is unchanged (`cwd`, optional `baseRef`, optional `ignoreWhitespace`).
 
-`ReviewDiffPreviewSource` keeps `id`, `kind`, `title`, `baseRef`, `headRef`, `diffHash`, `truncated`, and the branch-range commit fields. **`diff` is removed.**
+`ReviewDiffPreviewSource` keeps `id`, `kind`, `title`, `baseRef`, `headRef`, `diffHash`, `truncated`, and the branch-range commit fields. `diff` stays a required string (unified patch, 120 KB). `files` is also required. Store 1.0.3 reads `diff`. This fork's desktop reads `files`.
 
 ```ts
 files: ReadonlyArray<{
