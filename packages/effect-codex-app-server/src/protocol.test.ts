@@ -32,8 +32,17 @@ const decodeConsumeRateLimitResetCreditParams = Schema.decodeUnknownEffect(
 const decodeConsumeRateLimitResetCreditResponse = Schema.decodeUnknownEffect(
   CodexRpc.CLIENT_REQUEST_RESPONSES["account/rateLimitResetCredit/consume"],
 );
+const decodeThreadResumeSubAgentActivityKind = Schema.decodeUnknownEffect(
+  CodexSchema.V2ThreadResumeResponse__SubAgentActivityKind,
+);
 
 it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
+  it.effect("accepts completed sub-agent activity when resuming a thread", () =>
+    Effect.gen(function* () {
+      assert.equal(yield* decodeThreadResumeSubAgentActivityKind("completed"), "completed");
+    }),
+  );
+
   it.effect("maps account usage responses to the upstream token usage schema", () =>
     Effect.gen(function* () {
       assert.strictEqual(

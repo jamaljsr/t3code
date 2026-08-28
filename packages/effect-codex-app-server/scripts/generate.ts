@@ -17,7 +17,7 @@ import {
 } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-const UPSTREAM_REF = "678157acaa819d5510adfe359abb5d0392cfe461";
+const UPSTREAM_REF = "90854393966b21e9ebfd21b122334eb09a20c93d";
 const USER_AGENT = "effect-codex-app-server-generator";
 const GITHUB_API_BASE =
   "https://api.github.com/repos/openai/codex/contents/codex-rs/app-server-protocol";
@@ -292,7 +292,8 @@ function toPascalCaseMethod(method: string) {
 }
 
 function parseRequestEntries(fileContents: string): ReadonlyArray<MethodEntry> {
-  const entryPattern = /\{\s*"method":\s*"([^"]+)",\s*id:\s*RequestId,\s*params:\s*([^,}]+)/g;
+  const entryPattern =
+    /\{\s*"method":\s*"([^"]+)",\s*id:\s*RequestId,\s*params\??:\s*([^,}|]+)(?:\s*\|\s*undefined)?/g;
   const entries: Array<MethodEntry> = [];
   let match: RegExpExecArray | null;
   while ((match = entryPattern.exec(fileContents)) !== null) {
@@ -328,6 +329,7 @@ function resolveSchemaTypeName(
   const candidates = [
     rawTypeName,
     `V2${rawTypeName}`,
+    `V2Nullable${rawTypeName}`,
     `V1${rawTypeName}`,
     `SerdeJson${rawTypeName}`,
   ];
