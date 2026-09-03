@@ -55,17 +55,15 @@ The trigger displays:
 The popup contains:
 
 1. An “All projects” command row with a folder icon and no checkbox. Clicking it restores unrestricted scope and closes the menu immediately.
-2. One checkbox row per logical project. While unrestricted, every project checkbox appears checked.
+2. One project row per logical project. Each row always shows a check control. Selected checks use the normal foreground color. Unselected checks stay visible but muted. While unrestricted, every check appears selected.
 
-Clicking a project row toggles that project immediately and keeps the menu open. The final selected project cannot be unchecked. When unrestricted, unchecking one project creates a custom selection containing every other available project.
+Clicking the project row (favicon, name, or remaining row area) replaces the current scope with that single logical project and closes the menu immediately. This is the common single-project switch.
 
-Each project row retains the existing project-settings gear and adds a “Show only this project” button immediately before it. The new button:
+Clicking the check toggles that project immediately and keeps the menu open. This is how a user builds a multi-project scope. The final selected project cannot be unchecked. When unrestricted, unchecking one project creates a custom selection containing every other available project.
 
-- Replaces the current scope with that single logical project
-- Closes the menu immediately
-- Works even when the project is already the only selected project
-- Uses an explicit tooltip and accessible label, “Show only <project>”
-- Stops row selection events so it does not also toggle the checkbox
+Each project row retains the existing project-settings gear. There is no separate “Show only this project” control; the row click owns that action.
+
+The check and settings buttons stop row selection events so they do not also focus a single project or close the menu.
 
 The settings button retains its existing navigation, event handling, and menu-closing behavior.
 
@@ -93,10 +91,10 @@ An active route whose thread falls outside the new scope follows current single-
 There is no I/O or persistence, so storage decoding, quota failures, migrations, and synchronization errors do not apply.
 
 - With zero projects, keep the selector hidden as it is today.
-- With one project, the project remains checked and cannot be unchecked; “All projects” and “Show only” still close the menu predictably.
+- With one project, the project remains checked and cannot be unchecked; “All projects” and row-click still close the menu predictably.
 - Removed or regrouped projects are reconciled as described in the selection model.
 - Duplicate project keys are treated as one selection.
-- Project settings and show-only buttons must prevent pointer/click propagation into the checkbox row.
+- Project settings and check-toggle buttons must prevent pointer/click propagation into the row.
 
 ## Testing
 
@@ -106,7 +104,9 @@ Add focused unit tests for pure selection and presentation behavior:
 - Unchecking one project from unrestricted scope
 - Checking and unchecking projects in custom scope
 - Prevention of an empty selection
-- “Show only” selection
+- Row click focusing one project and closing the menu
+- Check-click toggling selection while keeping the menu open
+- Muted checks on unselected projects
 - Restoring unrestricted scope
 - Reconciliation after project removal or regrouping
 - Normalization when custom scope becomes equivalent to all

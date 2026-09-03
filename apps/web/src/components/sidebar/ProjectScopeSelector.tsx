@@ -1,4 +1,4 @@
-import { ChevronDownIcon, FolderIcon, FocusIcon, SettingsIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, FolderIcon, SettingsIcon } from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -9,7 +9,7 @@ import {
 } from "react";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
-import { Menu, MenuCheckboxItem, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
@@ -99,18 +99,33 @@ export function ProjectScopeSelector({
           <FolderIcon className="size-4 shrink-0" />
           <span className="min-w-0 truncate text-sm">All projects</span>
         </MenuItem>
-        {projects.map((project) => (
-          <MenuCheckboxItem
-            key={project.projectKey}
-            checked={scope.selection === null || scope.selection.includes(project.projectKey)}
-            closeOnClick={false}
-            onCheckedChange={() =>
-              onSelectionChange(
-                toggleProjectScopeSelection(scope.selection, projects, project.projectKey),
-              )
-            }
-          >
-            <span className="flex min-w-0 items-center gap-2">
+        {projects.map((project) => {
+          const selected = scope.selection === null || scope.selection.includes(project.projectKey);
+          return (
+            <MenuItem
+              key={project.projectKey}
+              closeOnClick
+              onClick={() => onSelectionChange(selectOnlyProjectScope(project.projectKey))}
+            >
+              <Button
+                size="icon-xs"
+                variant="ghost-muted"
+                aria-label={`Toggle ${project.displayName}`}
+                aria-pressed={selected}
+                className={
+                  selected ? "[--control-icon-color:currentColor] text-foreground" : "opacity-30"
+                }
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSelectionChange(
+                    toggleProjectScopeSelection(scope.selection, projects, project.projectKey),
+                  );
+                }}
+              >
+                <CheckIcon className="size-3.5" />
+              </Button>
               <ProjectFavicon
                 environmentId={project.environmentId}
                 cwd={project.workspaceRoot}
@@ -118,27 +133,6 @@ export function ProjectScopeSelector({
                 className="size-4 shrink-0"
               />
               <span className="min-w-0 flex-1 truncate">{project.displayName}</span>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      size="icon-xs"
-                      variant="ghost-muted"
-                      aria-label={`Show only ${project.displayName}`}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onSelectionChange(selectOnlyProjectScope(project.projectKey));
-                        onOpenChange(false);
-                      }}
-                    />
-                  }
-                >
-                  <FocusIcon className="size-3.5" />
-                </TooltipTrigger>
-                <TooltipPopup side="right">Show only {project.displayName}</TooltipPopup>
-              </Tooltip>
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -158,9 +152,9 @@ export function ProjectScopeSelector({
                 </TooltipTrigger>
                 <TooltipPopup side="right">Project settings for {project.displayName}</TooltipPopup>
               </Tooltip>
-            </span>
-          </MenuCheckboxItem>
-        ))}
+            </MenuItem>
+          );
+        })}
       </MenuPopup>
     </Menu>
   );
