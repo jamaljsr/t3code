@@ -13,7 +13,7 @@ const menuInteractions = vi.hoisted(() => ({
       activate: () => void;
     }
   >(),
-  showOnly: new Map<
+  toggle: new Map<
     string,
     {
       activate: () => {
@@ -21,6 +21,8 @@ const menuInteractions = vi.hoisted(() => ({
         stopPropagation: ReturnType<typeof vi.fn>;
       };
       onPointerDown?: (event: { stopPropagation: () => void }) => void;
+      pressed?: boolean;
+      muted?: boolean;
     }
   >(),
   settings: new Map<
@@ -43,14 +45,18 @@ vi.mock("../ui/button", () => ({
   }: {
     children?: unknown;
     "aria-label"?: string;
+    "aria-pressed"?: boolean;
+    className?: string;
     onClick?: (event: { preventDefault: () => void; stopPropagation: () => void }) => void;
     onPointerDown?: (event: { stopPropagation: () => void }) => void;
   }) => {
     const label = props["aria-label"];
-    if (label?.startsWith("Show only ")) {
-      const projectName = label.slice("Show only ".length);
-      menuInteractions.showOnly.set(projectName, {
+    if (label?.startsWith("Toggle ")) {
+      const projectName = label.slice("Toggle ".length);
+      menuInteractions.toggle.set(projectName, {
         ...props,
+        muted: props.className?.includes("opacity-30") ?? false,
+        pressed: props["aria-pressed"] ?? false,
         activate: () => {
           let propagationStopped = false;
           const event = {
@@ -94,31 +100,20 @@ vi.mock("../ui/menu", () => ({
     closeOnClick?: boolean;
     onClick?: () => void;
   }) => {
-    menuInteractions.allProjects = {
-      activate: () => {
-        props.onClick?.();
-        if (props.closeOnClick !== false) menuInteractions.closeMenu?.(false);
-      },
-    };
-    return <>{children}</>;
-  },
-  MenuCheckboxItem: ({
-    children,
-    ...props
-  }: {
-    children?: unknown;
-    closeOnClick?: boolean;
-    onCheckedChange?: () => void;
-  }) => {
     const markup = renderToStaticMarkup(<>{children}</>);
+    const activate = () => {
+      props.onClick?.();
+      if (props.closeOnClick !== false) menuInteractions.closeMenu?.(false);
+    };
+
+    if (markup.includes("All projects")) {
+      menuInteractions.allProjects = { activate };
+      return <>{children}</>;
+    }
+
     for (const name of ["Alpha", "Beta", "Gamma"]) {
       if (markup.includes(name)) {
-        menuInteractions.projectRows.set(name, {
-          activate: () => {
-            props.onCheckedChange?.();
-            if (props.closeOnClick !== false) menuInteractions.closeMenu?.(false);
-          },
-        });
+        menuInteractions.projectRows.set(name, { activate });
       }
     }
     return <>{children}</>;
@@ -167,7 +162,7 @@ function renderSelector(selection: ProjectScopeSelection = null) {
   menuInteractions.closeMenu = null;
   menuInteractions.allProjects = null;
   menuInteractions.projectRows.clear();
-  menuInteractions.showOnly.clear();
+  menuInteractions.toggle.clear();
   menuInteractions.settings.clear();
 
   const onSelectionChange = vi.fn();
@@ -205,15 +200,13 @@ describe("ProjectScopeTriggerContent", () => {
 });
 
 describe("ProjectScopeSelector interactions", () => {
-  it("keeps project checkbox rows open while toggling their selection", () => {
+  it("selects only the clicked project and closes the menu", () => {
     const { onOpenChange, onSelectionChange } = renderSelector(["alpha", "beta"]);
 
-    const alphaRow = menuInteractions.projectRows.get("Alpha");
+    menuInteractions.projectRows.get("Alpha")?.activate();
 
-    alphaRow?.activate();
-
-    expect(onSelectionChange).toHaveBeenCalledWith(["beta"]);
-    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(onSelectionChange).toHaveBeenCalledWith(["alpha"]);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it("resets to all projects and closes the menu", () => {
@@ -225,23 +218,35 @@ describe("ProjectScopeSelector interactions", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("shows only a project without toggling its checkbox row", () => {
+  it("toggles a project from its check without closing the menu", () => {
     const { onOpenChange, onSelectionChange } = renderSelector(["alpha", "beta"]);
-    const showOnly = menuInteractions.showOnly.get("Alpha");
-    const event = showOnly?.activate();
+    const event = menuInteractions.toggle.get("Alpha")?.activate();
 
     expect(event?.preventDefault).toHaveBeenCalledOnce();
     expect(event?.stopPropagation).toHaveBeenCalledOnce();
-    expect(onSelectionChange).toHaveBeenCalledWith(["alpha"]);
+    expect(onSelectionChange).toHaveBeenCalledWith(["beta"]);
     expect(onSelectionChange).toHaveBeenCalledTimes(1);
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
-  it("stops row propagation from trailing actions", () => {
+  it("shows muted checks on unselected projects", () => {
+    renderSelector(["alpha"]);
+
+    expect(menuInteractions.toggle.get("Alpha")).toMatchObject({
+      muted: false,
+      pressed: true,
+    });
+    expect(menuInteractions.toggle.get("Beta")).toMatchObject({
+      muted: true,
+      pressed: false,
+    });
+  });
+
+  it("stops row propagation from the check and settings actions", () => {
     renderSelector();
     const event = { stopPropagation: vi.fn() };
 
-    menuInteractions.showOnly.get("Alpha")?.onPointerDown?.(event);
+    menuInteractions.toggle.get("Alpha")?.onPointerDown?.(event);
     menuInteractions.settings.get("Alpha")?.onPointerDown?.(event);
 
     expect(event.stopPropagation).toHaveBeenCalledTimes(2);
