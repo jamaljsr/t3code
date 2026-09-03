@@ -1,6 +1,7 @@
 import {
   EnvironmentId,
   EventId,
+  MessageId,
   ORCHESTRATION_WS_METHODS,
   ProjectId,
   ProviderInstanceId,
@@ -112,6 +113,7 @@ function testSession(
         ? ({ threadResumeCompletionMarker: true } as never)
         : ({} as never),
     ),
+    subscribeServerConfig: (input) => client.subscribeServerConfig(input),
     ready: Effect.void,
     probe: Effect.void,
     closed: Effect.never,
@@ -273,10 +275,10 @@ const snapshot = (thread: OrchestrationThread): OrchestrationThreadStreamItem =>
 
 const synchronized = (): OrchestrationThreadStreamItem => ({ kind: "synchronized" });
 
-const titleUpdated = (title: string, sequence = 2): OrchestrationThreadStreamItem => ({
+const messageSent = (text: string, sequence = 2): OrchestrationThreadStreamItem => ({
   kind: "event",
   event: {
-    eventId: EventId.make("event-title"),
+    eventId: EventId.make(`event-message-${sequence}`),
     sequence,
     occurredAt: "2026-04-01T01:00:00.000Z",
     commandId: null,
@@ -285,14 +287,22 @@ const titleUpdated = (title: string, sequence = 2): OrchestrationThreadStreamIte
     metadata: {},
     aggregateKind: "thread",
     aggregateId: THREAD_ID,
-    type: "thread.meta-updated",
+    type: "thread.message-sent",
     payload: {
       threadId: THREAD_ID,
-      title,
+      messageId: MessageId.make(`message-${sequence}`),
+      role: "assistant",
+      text,
+      turnId: null,
+      streaming: false,
+      createdAt: "2026-04-01T01:00:00.000Z",
       updatedAt: "2026-04-01T01:00:00.000Z",
     },
   },
 });
+
+const hasMessageText = (thread: OrchestrationThread, text: string): boolean =>
+  thread.messages.some((message) => message.text === text);
 
 const deleted = (): OrchestrationThreadStreamItem => ({
   kind: "event",
@@ -331,13 +341,13 @@ describe("EnvironmentThreads", () => {
 
       // The warm cache reaches live from the cached data, and a live event
       // applies on top of it.
-      yield* Queue.offer(harness.inputs, titleUpdated("Live title", CACHED_SNAPSHOT_SEQUENCE + 1));
+      yield* Queue.offer(harness.inputs, messageSent("Live message", CACHED_SNAPSHOT_SEQUENCE + 1));
       yield* awaitThreadState(
         harness.observed,
         (value) =>
           value.status === "live" &&
           Option.isSome(value.data) &&
-          value.data.value.title === "Live title",
+          hasMessageText(value.data.value, "Live message"),
       );
 
       // The subscription resumed from the cached sequence and never fetched the
@@ -351,20 +361,22 @@ describe("EnvironmentThreads", () => {
     Effect.gen(function* () {
       const harness = yield* makeHarness({ cached: BASE_THREAD });
       yield* Queue.offer(harness.inputs, snapshot(BASE_THREAD));
-      yield* Queue.offer(harness.inputs, titleUpdated("Live title"));
+      yield* Queue.offer(harness.inputs, messageSent("Live message"));
 
       const state = yield* awaitThreadState(
         harness.observed,
         (value) =>
           value.status === "live" &&
           Option.isSome(value.data) &&
-          value.data.value.title === "Live title",
+          hasMessageText(value.data.value, "Live message"),
       );
       yield* TestClock.adjust("500 millis");
       yield* Effect.yieldNow;
 
-      expect(Option.getOrThrow(state.data).title).toBe("Live title");
-      expect((yield* Ref.get(harness.savedThreads)).at(-1)?.thread.title).toBe("Live title");
+      expect(hasMessageText(Option.getOrThrow(state.data), "Live message")).toBe(true);
+      expect(
+        hasMessageText((yield* Ref.get(harness.savedThreads)).at(-1)!.thread, "Live message"),
+      ).toBe(true);
       expect((yield* Ref.get(harness.savedThreads)).at(-1)?.snapshotSequence).toBe(2);
     }),
   );
@@ -402,17 +414,17 @@ describe("EnvironmentThreads", () => {
       });
       // No socket snapshot is pushed; only a live event arrives over the socket.
       // It can only be applied if the HTTP snapshot already seeded the thread.
-      yield* Queue.offer(harness.inputs, titleUpdated("Live title", 2));
+      yield* Queue.offer(harness.inputs, messageSent("Live message", 2));
 
       const state = yield* awaitThreadState(
         harness.observed,
         (value) =>
           value.status === "live" &&
           Option.isSome(value.data) &&
-          value.data.value.title === "Live title",
+          hasMessageText(value.data.value, "Live message"),
       );
 
-      expect(Option.getOrThrow(state.data).title).toBe("Live title");
+      expect(hasMessageText(Option.getOrThrow(state.data), "Live message")).toBe(true);
       // Cold cache: the full snapshot was loaded over HTTP and the socket
       // resumed from that snapshot's sequence.
       expect(yield* Ref.get(harness.loaderCalls)).toBeGreaterThanOrEqual(1);
@@ -424,18 +436,19 @@ describe("EnvironmentThreads", () => {
     Effect.gen(function* () {
       const harness = yield* makeHarness({ cached: BASE_THREAD });
       yield* Queue.offer(harness.inputs, snapshot(BASE_THREAD));
-      yield* Queue.offer(harness.inputs, titleUpdated("Replayed title", 1));
-      yield* Queue.offer(harness.inputs, titleUpdated("Live title", 2));
+      yield* Queue.offer(harness.inputs, messageSent("Replayed message", 1));
+      yield* Queue.offer(harness.inputs, messageSent("Live message", 2));
 
       const state = yield* awaitThreadState(
         harness.observed,
         (value) =>
           value.status === "live" &&
           Option.isSome(value.data) &&
-          value.data.value.title === "Live title",
+          hasMessageText(value.data.value, "Live message"),
       );
 
-      expect(Option.getOrThrow(state.data).title).toBe("Live title");
+      expect(hasMessageText(Option.getOrThrow(state.data), "Live message")).toBe(true);
+      expect(hasMessageText(Option.getOrThrow(state.data), "Replayed message")).toBe(false);
     }),
   );
 
@@ -610,14 +623,14 @@ describe("EnvironmentThreads", () => {
 
       yield* Queue.offer(
         harness.inputs,
-        titleUpdated("Caught-up title", CACHED_SNAPSHOT_SEQUENCE + 1),
+        messageSent("Caught-up message", CACHED_SNAPSHOT_SEQUENCE + 1),
       );
       const catchingUp = yield* awaitThreadState(
         harness.observed,
         (value) =>
           value.status === "synchronizing" &&
           Option.isSome(value.data) &&
-          value.data.value.title === "Caught-up title",
+          hasMessageText(value.data.value, "Caught-up message"),
       );
       expect(catchingUp.status).toBe("synchronizing");
 
@@ -626,7 +639,7 @@ describe("EnvironmentThreads", () => {
         harness.observed,
         (value) => value.status === "live" && Option.isSome(value.data),
       );
-      expect(Option.getOrThrow(live.data).title).toBe("Caught-up title");
+      expect(hasMessageText(Option.getOrThrow(live.data), "Caught-up message")).toBe(true);
     }),
   );
 
@@ -635,7 +648,7 @@ describe("EnvironmentThreads", () => {
       const harness = yield* makeHarness({ cached: BASE_THREAD, completionMarker: true });
       yield* Queue.offer(
         harness.inputs,
-        titleUpdated("Latest title", CACHED_SNAPSHOT_SEQUENCE + 1),
+        messageSent("Latest message", CACHED_SNAPSHOT_SEQUENCE + 1),
       );
       yield* Queue.offer(harness.inputs, synchronized());
       yield* awaitThreadState(
@@ -643,7 +656,7 @@ describe("EnvironmentThreads", () => {
         (value) =>
           value.status === "live" &&
           Option.isSome(value.data) &&
-          value.data.value.title === "Latest title",
+          hasMessageText(value.data.value, "Latest message"),
       );
 
       yield* harness.replaceSession;
@@ -663,7 +676,7 @@ describe("EnvironmentThreads", () => {
       const harness = yield* makeHarness({ cached: BASE_THREAD, completionMarker: true });
       yield* Queue.offer(
         harness.inputs,
-        titleUpdated("Latest title", CACHED_SNAPSHOT_SEQUENCE + 1),
+        messageSent("Latest message", CACHED_SNAPSHOT_SEQUENCE + 1),
       );
       yield* Queue.offer(harness.inputs, synchronized());
       yield* awaitThreadState(
@@ -671,7 +684,7 @@ describe("EnvironmentThreads", () => {
         (value) =>
           value.status === "live" &&
           Option.isSome(value.data) &&
-          value.data.value.title === "Latest title",
+          hasMessageText(value.data.value, "Latest message"),
       );
 
       yield* Queue.offer(harness.wakeups, "application-active");
@@ -695,7 +708,7 @@ describe("EnvironmentThreads", () => {
         harness.observed,
         (value) => value.status === "live" && Option.isSome(value.data),
       );
-      expect(Option.getOrThrow(live.data).title).toBe("Latest title");
+      expect(hasMessageText(Option.getOrThrow(live.data), "Latest message")).toBe(true);
 
       yield* Queue.offer(harness.wakeups, "application-active-probe");
       for (let attempt = 0; attempt < 100; attempt += 1) {

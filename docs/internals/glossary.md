@@ -12,6 +12,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
 - [Review](#review)
+- [Appearance](#appearance)
 
 ## Concepts
 
@@ -151,6 +152,21 @@ The file patch and changed-file summary for one turn. It is usually computed in 
 
 The live working-tree / branch review payload. It is a file list plus stats (`review.getDiffPreview`), not a unified patch. One file's patch is `review.getDiffFilePatch`; unchanged lines are filled from `review.getDiffFileContents`. Turn diffs still use the checkpoint patch RPC.
 
+### Appearance
+
+#### Environment theme
+
+A theme an environment's machine publishes for clients to follow, one file per theme under `themes/` in that environment's state directory; the filename is the theme id. [environmentTheme.ts][25] watches the directory and streams the set over `subscribeServerConfig`; clients render each as a library card, generating a full palette when the file carries seed colors and using the palette directly when it is a standard exported theme file. A desktop that retints its apps when the system theme changes rewrites its file, so T3 Code follows along without a restart. See [environment-theme.md][26].
+
+#### Default theme
+
+The environment's theme, held in its `settings.json` as `defaultTheme` (with `defaultThemeSetAt`
+as the set-generation) and set with `t3 theme set <id>`. Web and desktop clients apply each set
+once — live when connected, on the next connect otherwise — so setting it switches them, while a
+theme a user picks in Settings afterwards sticks until the next set; mobile keeps its own
+appearance settings. Naming a published [environment theme](#environment-theme) is how a desktop
+ships T3 Code already matching it.
+
 ## Practical Shortcuts
 
 - If you see `requested`, think "intent recorded".
@@ -190,3 +206,5 @@ The live working-tree / branch review payload. It is a file list plus stats (`re
 [22]: ../../apps/server/src/checkpointing/Utils.ts
 [23]: ../../apps/server/src/checkpointing/Diffs.ts
 [24]: ./overview.md
+[25]: ../../apps/server/src/environmentTheme.ts
+[26]: ../user/environment-theme.md

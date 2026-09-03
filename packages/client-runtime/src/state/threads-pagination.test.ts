@@ -1,6 +1,7 @@
 import {
   EnvironmentId,
   EventId,
+  MessageId,
   ORCHESTRATION_WS_METHODS,
   ProjectId,
   ProviderInstanceId,
@@ -156,6 +157,7 @@ const makeHarness = Effect.fn("TestThreadPagination.makeHarness")(function* (opt
     initialConfig: Effect.succeed({
       threadSnapshotPagination: options?.paginationCapability !== false,
     } as never),
+    subscribeServerConfig: (input) => client.subscribeServerConfig(input),
     ready: Effect.void,
     probe: Effect.void,
     closed: Effect.never,
@@ -241,10 +243,10 @@ const hasMessage = (state: EnvironmentThreadState, id: string): boolean =>
     onSome: (thread) => thread.messages.some((entry) => entry.id === id),
   });
 
-const titleEvent = (title: string, sequence: number): OrchestrationThreadStreamItem => ({
+const watermarkEvent = (sequence: number): OrchestrationThreadStreamItem => ({
   kind: "event",
   event: {
-    eventId: EventId.make(`event-title-${sequence}`),
+    eventId: EventId.make(`event-watermark-${sequence}`),
     sequence,
     occurredAt: "2026-04-01T01:30:00.000Z",
     commandId: null,
@@ -253,10 +255,15 @@ const titleEvent = (title: string, sequence: number): OrchestrationThreadStreamI
     metadata: {},
     aggregateKind: "thread",
     aggregateId: THREAD_ID,
-    type: "thread.meta-updated",
+    type: "thread.message-sent",
     payload: {
       threadId: THREAD_ID,
-      title,
+      messageId: MessageId.make(`message-watermark-${sequence}`),
+      role: "assistant",
+      text: "Advanced past watermark",
+      turnId: null,
+      streaming: false,
+      createdAt: "2026-04-01T01:30:00.000Z",
       updatedAt: "2026-04-01T01:30:00.000Z",
     },
   },
@@ -471,7 +478,7 @@ describe("thread pagination state", () => {
       );
 
       // A live event at sequence 11 arrives; only then does the page merge.
-      yield* Queue.offer(harness.inputs, titleEvent("Advanced past watermark", 11));
+      yield* Queue.offer(harness.inputs, watermarkEvent(11));
       const state = yield* harness.awaitState((value) => hasMessage(value, "message-old"));
       expect(hasMessage(state, "message-recent")).toBe(true);
       expect(Option.getOrThrow(state.page).loadingOlder).toBe(false);
