@@ -521,7 +521,10 @@ export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestr
   )
   .add(
     HttpApiEndpoint.get("threadSnapshot", "/api/orchestration/threads/:threadId", {
-      headers: OptionalBearerHeaders,
+      headers: Schema.Struct({
+        ...OptionalBearerHeaders.fields,
+        "x-t3-file-attachments": Schema.optional(Schema.Literal("true")),
+      }),
       params: EnvironmentOrchestrationThreadSnapshotParams,
       payload: EnvironmentOrchestrationThreadSnapshotQuery,
       success: OrchestrationThreadDetailSnapshot,

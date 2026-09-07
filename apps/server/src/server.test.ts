@@ -1628,6 +1628,7 @@ const assertBrowserApiCorsPreflightHeaders = (
     "content-type",
     "dpop",
     "traceparent",
+    "x-t3-file-attachments",
   ]);
 };
 const crossOriginClientOrigin = "http://remote-client.test:3773";
@@ -5221,6 +5222,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         "content-type",
         "dpop",
         "traceparent",
+        "x-t3-file-attachments",
       ]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -8270,6 +8272,137 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.deepEqual(Option.getOrThrow(firstItem), { kind: "synchronized" });
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
+
+  for (const fileAttachments of [false, true]) {
+    it.effect(
+      `serves compatible file attachments over HTTP, snapshots, live events and replay (${fileAttachments})`,
+      () =>
+        Effect.gen(function* () {
+          const attachments = [
+            {
+              type: "image" as const,
+              id: "image-one",
+              name: "image.png",
+              mimeType: "image/png",
+              sizeBytes: 100,
+            },
+            {
+              type: "file" as const,
+              id: "video-one",
+              name: "recording.mov",
+              mimeType: "video/quicktime",
+              sizeBytes: 100,
+            },
+            {
+              type: "file" as const,
+              id: "pdf-one",
+              name: "report.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 100,
+            },
+          ];
+          const expectedAttachments = fileAttachments ? attachments : attachments.slice(0, 1);
+          const message = {
+            id: MessageId.make("attachment-message"),
+            role: "user" as const,
+            text: "See recordings",
+            attachments,
+            turnId: null,
+            streaming: false,
+            createdAt: "2026-01-01T00:00:01.000Z",
+            updatedAt: "2026-01-01T00:00:01.000Z",
+          };
+          const thread = {
+            ...makeDefaultOrchestrationReadModel().threads[0]!,
+            messages: [message],
+          };
+          const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
+          const event = {
+            sequence: 2,
+            eventId: EventId.make("attachment-event"),
+            aggregateKind: "thread",
+            aggregateId: defaultThreadId,
+            occurredAt: message.createdAt,
+            commandId: null,
+            causationEventId: null,
+            correlationId: null,
+            metadata: {},
+            type: "thread.message-sent",
+            payload: { ...message, threadId: defaultThreadId, messageId: message.id },
+          } satisfies Extract<OrchestrationEvent, { type: "thread.message-sent" }>;
+          yield* buildAppUnderTest({
+            layers: {
+              orchestrationEngine: {
+                streamDomainEvents: Stream.fromPubSub(liveEvents),
+                latestSequence: Effect.succeed(2),
+                getThreadReplayStats: () =>
+                  Effect.succeed({ eventCount: 1, payloadBytes: 100, hasCreateEvent: false }),
+                readThreadEvents: () => Stream.make(event),
+              },
+              projectionSnapshotQuery: {
+                getThreadDetailSnapshot: () =>
+                  Effect.gen(function* () {
+                    yield* PubSub.publish(liveEvents, event);
+                    return Option.some({ snapshotSequence: 1, thread });
+                  }),
+              },
+            },
+          });
+          const cookie = yield* getAuthenticatedSessionCookieHeader();
+          for (const query of ["", "?turnLimit=1", "?turnLimit=1&beforeCursor=older"]) {
+            const response = yield* fetchEffect(
+              yield* getHttpServerUrl(`/api/orchestration/threads/${defaultThreadId}${query}`),
+              {
+                headers: {
+                  cookie,
+                  ...(fileAttachments ? { "x-t3-file-attachments": "true" } : {}),
+                },
+              },
+            );
+            assert.equal(response.status, 200);
+            const snapshot = yield* responseJsonEffect<OrchestrationThreadDetailSnapshot>(response);
+            assert.deepEqual(snapshot.thread.messages[0]?.attachments, expectedAttachments);
+            assert.equal(snapshot.thread.messages[0]?.text, message.text);
+          }
+          const wsUrl = yield* getWsServerUrl("/ws");
+          for (const afterSequence of [undefined, 1]) {
+            const items = yield* Effect.scoped(
+              withWsRpcClient(wsUrl, (client) =>
+                client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+                  threadId: defaultThreadId,
+                  requestCompletionMarker: true,
+                  ...(fileAttachments ? { fileAttachments: true } : {}),
+                  ...(afterSequence === undefined ? {} : { afterSequence }),
+                }).pipe(
+                  Stream.takeUntil((item) => item.kind === "synchronized"),
+                  Stream.runCollect,
+                ),
+              ),
+            );
+            assert.deepEqual(
+              items.map((item) => item.kind),
+              afterSequence === undefined
+                ? ["snapshot", "event", "synchronized"]
+                : ["event", "synchronized"],
+            );
+            for (const item of items) {
+              if (item.kind === "snapshot")
+                assert.deepEqual(
+                  item.snapshot.thread.messages[0]?.attachments,
+                  expectedAttachments,
+                );
+              if (item.kind === "event") {
+                assertTrue(item.event.type === "thread.message-sent");
+                assert.deepEqual(item.event.payload.attachments, expectedAttachments);
+                assert.equal(item.event.sequence, 2);
+              }
+            }
+          }
+          assert.equal(message.attachments.length, 3);
+          assert.equal(event.payload.attachments.length, 3);
+        }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+    );
+  }
 
   it.effect("marks a socket thread snapshot as synchronized when requested", () =>
     Effect.gen(function* () {

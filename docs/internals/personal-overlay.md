@@ -22,6 +22,12 @@ Required shape for `review.getDiffPreview` sources:
 
 New RPCs (`getDiffFilePatch`) are fine; store 1.0.3 never calls them.
 
+File attachments also need an opt-in. Store 1.0.3 accepts only image attachments;
+one video or PDF can prevent an entire thread from loading. Thread HTTP reads use
+`x-t3-file-attachments: true`, and socket subscriptions use `fileAttachments: true`.
+Without the opt-in, filter non-image attachments from outgoing snapshots and
+message events, including replay. Never remove them from persisted messages.
+
 ## Desktop panel
 
 Implementation: `apps/web/src/components/ThreadDiffPanel.tsx`.

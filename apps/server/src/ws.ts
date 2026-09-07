@@ -1,3 +1,4 @@
+import { projectFileAttachmentsStreamItem } from "./orchestration/FileAttachmentCompatibility.ts";
 import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
@@ -1750,7 +1751,13 @@ const makeWsRpcLayer = (
                 }),
                 afterSnapshot,
               );
-            }),
+            }).pipe(
+              Effect.map((stream) =>
+                Stream.map(stream, (item) =>
+                  projectFileAttachmentsStreamItem(item, input.fileAttachments === true),
+                ),
+              ),
+            ),
             { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>

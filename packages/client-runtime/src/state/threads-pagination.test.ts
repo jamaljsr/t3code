@@ -304,6 +304,7 @@ describe("thread pagination state", () => {
       const windows = yield* Ref.get(harness.loaderWindows);
       expect(windows[0]?.turnLimit).toBe(INITIAL_THREAD_USER_TURN_LIMIT);
       const subscribeInput = yield* Ref.get(harness.lastSubscribeInput);
+      expect(subscribeInput?.fileAttachments).toBe(true);
       expect(subscribeInput?.turnLimit).toBe(INITIAL_THREAD_USER_TURN_LIMIT);
     }),
   );
@@ -319,6 +320,7 @@ describe("thread pagination state", () => {
       const windows = yield* Ref.get(harness.loaderWindows);
       expect(windows[0]).toBeUndefined();
       const subscribeInput = yield* Ref.get(harness.lastSubscribeInput);
+      expect(subscribeInput?.fileAttachments).toBe(true);
       expect(subscribeInput?.turnLimit).toBeUndefined();
     }),
   );
@@ -529,6 +531,7 @@ describe("thread pagination state", () => {
       // The subscription resumed from the fresh full snapshot, not the
       // discarded windowed cache's watermark, and sent no window fields.
       const subscribeInput = yield* Ref.get(harness.lastSubscribeInput);
+      expect(subscribeInput?.fileAttachments).toBe(true);
       expect(subscribeInput?.turnLimit).toBeUndefined();
       expect(subscribeInput?.afterSequence).toBe(20);
     }),

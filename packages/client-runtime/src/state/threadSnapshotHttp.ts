@@ -58,7 +58,7 @@ export const fetchEnvironmentThreadSnapshot = Effect.fn(
             ? { beforeCursor: input.window.beforeCursor }
             : {}),
         },
-        headers,
+        headers: { ...headers, "x-t3-file-attachments": "true" },
       }),
   });
 });

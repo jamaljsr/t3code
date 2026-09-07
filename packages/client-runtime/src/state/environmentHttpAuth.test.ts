@@ -228,6 +228,9 @@ describe("authenticated environment HTTP requests", () => {
       expect(call.init.method).toBe(loader.method);
       expect(new Headers(call.init.headers).get("authorization")).toBe("DPoP current-token");
       expect(new Headers(call.init.headers).get("dpop")).toBe("proof-1");
+      if (loader.name === "older thread history") {
+        expect(new Headers(call.init.headers).get("x-t3-file-attachments")).toBe("true");
+      }
       expect(call.init.credentials).toBeUndefined();
       expect(harness.authorizations).toEqual([{ expectedEnvironmentId: TARGET.environmentId }]);
       expect(harness.proofs).toEqual([
