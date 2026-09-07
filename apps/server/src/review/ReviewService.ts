@@ -1,3 +1,4 @@
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -43,6 +44,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
+  const sql = yield* SqlClient.SqlClient;
 
   const canonicalizePath = (value: string) => {
     const resolvedPath = path.resolve(value);
@@ -84,6 +86,28 @@ export const make = Effect.gen(function* () {
     if (isWithinRoot(candidate, workspaceRoot) || isWithinRoot(candidate, worktreesRoot)) {
       return;
     }
+
+    // Registered projects and worktrees can live outside the environment's startup directory.
+    const requestedPath = path.resolve(cwd);
+    const registered = yield* sql`
+      SELECT 1 FROM projection_projects
+      WHERE deleted_at IS NULL AND workspace_root IN (${requestedPath}, ${candidate})
+      UNION ALL
+      SELECT 1 FROM projection_threads
+      WHERE deleted_at IS NULL AND worktree_path IN (${requestedPath}, ${candidate})
+      LIMIT 1
+    `.pipe(
+      Effect.mapError(
+        (cause) =>
+          new VcsRepositoryDetectionError({
+            operation,
+            cwd,
+            detail: "Failed to check registered review workspaces.",
+            cause,
+          }),
+      ),
+    );
+    if (registered.length > 0) return;
 
     return yield* new VcsRepositoryDetectionError({
       operation,

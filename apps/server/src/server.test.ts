@@ -731,6 +731,7 @@ const buildAppUnderTest = (options?: {
           ...options.layers.reviewService,
         })
       : ReviewService.layer.pipe(
+          Layer.provide(SqlitePersistenceMemory),
           Layer.provideMerge(gitVcsDriverLayer),
           Layer.provide(vcsDriverRegistryLayer),
         );
