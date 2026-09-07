@@ -7,8 +7,15 @@ import type { TurnDiffFileChange } from "../../types";
 import { DiffStatLabel, hasNonZeroStat } from "../chat/DiffStatLabel";
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { Spinner } from "../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const EMPTY_DIRECTORY_OVERRIDES: Record<string, boolean> = {};
+const FILE_STATUS_INDICATORS = {
+  added: { label: "Added", marker: "A", className: "text-success" },
+  modified: { label: "Modified", marker: "M", className: "text-warning" },
+  deleted: { label: "Deleted", marker: "D", className: "text-destructive" },
+  renamed: { label: "Renamed", marker: "R", className: "text-info" },
+};
 
 export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
   files: ReadonlyArray<TurnDiffFileChange>;
@@ -108,6 +115,7 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
 
     const selected = selectedPath === node.path;
     const loading = loadingPath === node.path;
+    const status = node.status === null ? null : FILE_STATUS_INDICATORS[node.status];
 
     return (
       <button
@@ -138,11 +146,24 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
         <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90">
           {node.name}
         </span>
-        {node.stat && (
-          <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums">
+        <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums">
+          {status ? (
+            <Tooltip>
+              <TooltipTrigger render={<span />} tabIndex={-1} className="w-[1ch] text-center">
+                <span aria-hidden="true" className={status.className}>
+                  {status.marker}
+                </span>
+                <span className="sr-only">{status.label}</span>
+              </TooltipTrigger>
+              <TooltipPopup>{status.label}</TooltipPopup>
+            </Tooltip>
+          ) : (
+            <span aria-hidden="true" className="w-[1ch]" />
+          )}
+          {node.stat && (
             <DiffStatLabel additions={node.stat.additions} deletions={node.stat.deletions} />
-          </span>
-        )}
+          )}
+        </span>
       </button>
     );
   };

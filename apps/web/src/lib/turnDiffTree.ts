@@ -18,6 +18,7 @@ export interface TurnDiffTreeFileNode {
   name: string;
   path: string;
   stat: TurnDiffStat | null;
+  status: "added" | "modified" | "deleted" | "renamed" | null;
 }
 
 export type TurnDiffTreeNode = TurnDiffTreeDirectoryNode | TurnDiffTreeFileNode;
@@ -51,6 +52,25 @@ function readStat(file: TurnDiffFileChange): TurnDiffStat | null {
     additions: file.additions,
     deletions: file.deletions,
   };
+}
+
+function readStatus(kind: string): TurnDiffTreeFileNode["status"] {
+  switch (kind) {
+    case "new":
+    case "added":
+      return "added";
+    case "change":
+    case "modified":
+      return "modified";
+    case "deleted":
+      return "deleted";
+    case "rename-pure":
+    case "rename-changed":
+    case "renamed":
+      return "renamed";
+    default:
+      return null;
+  }
 }
 
 function compactDirectoryNode(node: TurnDiffTreeDirectoryNode): TurnDiffTreeDirectoryNode {
@@ -158,6 +178,7 @@ export function buildTurnDiffTree(files: ReadonlyArray<TurnDiffFileChange>): Tur
       name: fileName,
       path: filePath,
       stat,
+      status: readStatus(file.kind),
     });
 
     if (stat) {
