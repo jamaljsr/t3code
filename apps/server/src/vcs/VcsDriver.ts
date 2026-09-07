@@ -8,6 +8,7 @@ import type {
   VcsListRemotesResult,
   VcsListWorkspaceFilesResult,
   ReviewDiffPreviewInput,
+  ReviewCommitDiffPreviewInput,
   ReviewDiffPreviewResult,
   VcsRepositoryIdentity,
 } from "@t3tools/contracts";
@@ -75,7 +76,7 @@ export class VcsDriver extends Context.Service<
     ) => Effect.Effect<ReadonlyArray<string>, VcsError>;
     readonly initRepository: (input: VcsInitInput) => Effect.Effect<void, VcsError>;
     readonly getDiffPreview?: (
-      input: ReviewDiffPreviewInput,
+      input: ReviewDiffPreviewInput | ReviewCommitDiffPreviewInput,
     ) => Effect.Effect<ReviewDiffPreviewResult, VcsError>;
   }
 >()("t3/vcs/VcsDriver") {}

@@ -23,6 +23,7 @@ import {
   type ReviewDiffFileContentsInput,
   type ReviewDiffFilePatchInput,
   type ReviewDiffPreviewInput,
+  type ReviewCommitDiffPreviewInput,
   type ReviewDiffPreviewSource,
   type VcsRef,
 } from "@t3tools/contracts";
@@ -2294,9 +2295,95 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       .filter((part) => part.length > 0)
       .join("\n");
 
-  const getReviewDiffPreview = Effect.fn("getReviewDiffPreview")(function* (
-    input: ReviewDiffPreviewInput,
+  const getCommitDiffPreview = Effect.fn("getCommitDiffPreview")(function* (
+    input: ReviewCommitDiffPreviewInput,
   ) {
+    const headRef = (yield* runGitStdout("GitVcsDriver.getCommitDiffPreview.commit", input.cwd, [
+      "rev-parse",
+      "--verify",
+      "--end-of-options",
+      `${input.commitOid}^{commit}`,
+    ])).trim();
+    const commitObject = yield* runGitStdout(
+      "GitVcsDriver.getCommitDiffPreview.parents",
+      input.cwd,
+      ["cat-file", "commit", headRef],
+    );
+    const firstParent = commitObject
+      .split("\n\n", 1)[0]
+      ?.split("\n")
+      .find((line) => line.startsWith("parent "))
+      ?.slice(7);
+    // A merge is compared with its first parent. Root commits start from an empty tree.
+    const baseRef =
+      firstParent ??
+      (yield* executeGit("GitVcsDriver.getCommitDiffPreview.emptyTree", input.cwd, ["mktree"], {
+        stdin: "",
+      })).stdout.trim();
+    const whitespaceArgs = input.ignoreWhitespace ? ["--ignore-all-space"] : [];
+    const diffArgs = [
+      "diff",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--find-renames",
+      ...whitespaceArgs,
+    ];
+    const options = { maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES };
+    const [nameStatus, numstat] = yield* Effect.all(
+      [
+        executeGit(
+          "GitVcsDriver.getCommitDiffPreview.nameStatus",
+          input.cwd,
+          [...diffArgs, "--name-status", baseRef, headRef, "--"],
+          options,
+        ),
+        executeGit(
+          "GitVcsDriver.getCommitDiffPreview.numstat",
+          input.cwd,
+          [...diffArgs, "--numstat", baseRef, headRef, "--"],
+          options,
+        ),
+      ],
+      { concurrency: 2 },
+    );
+    const manifest = buildReviewDiffManifest({
+      nameStatus: nameStatus.stdout,
+      numstat: numstat.stdout,
+      untrackedPaths: [],
+      listingTruncated: nameStatus.stdoutTruncated || numstat.stdoutTruncated,
+    });
+    const files = input.ignoreWhitespace
+      ? manifest.files.filter(
+          (file) =>
+            file.changeType !== "change" ||
+            file.binary ||
+            file.additions !== null ||
+            file.deletions !== null,
+        )
+      : manifest.files;
+    return {
+      cwd: input.cwd,
+      generatedAt: yield* DateTime.now,
+      sources: [
+        {
+          id: `commit:${headRef}`,
+          kind: "branch-range" as const,
+          title: `Commit ${headRef.slice(0, 7)}`,
+          baseRef,
+          headRef,
+          diff: "",
+          files,
+          diffHash: `${headRef}:${input.ignoreWhitespace === true}`,
+          truncated: manifest.truncated,
+        },
+      ],
+    };
+  });
+
+  const getReviewDiffPreview = Effect.fn("getReviewDiffPreview")(function* (
+    input: ReviewDiffPreviewInput | ReviewCommitDiffPreviewInput,
+  ) {
+    if ("commitOid" in input) return yield* getCommitDiffPreview(input);
     const details = yield* statusDetailsLocal(input.cwd);
     if (!details.isRepo) {
       return {
@@ -2725,11 +2812,14 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         "Branch diff file expansion requires both base and head refs.",
       );
     }
-    const mergeBase = yield* runGitStdout(
-      "GitVcsDriver.getReviewDiffFileContents.mergeBase",
-      input.cwd,
-      ["merge-base", input.baseRef, input.headRef],
-    ).pipe(Effect.map((value) => value.trim()));
+    const mergeBase =
+      input.comparisonMode === "direct"
+        ? input.baseRef
+        : yield* runGitStdout("GitVcsDriver.getReviewDiffFileContents.mergeBase", input.cwd, [
+            "merge-base",
+            input.baseRef,
+            input.headRef,
+          ]).pipe(Effect.map((value) => value.trim()));
     if (mergeBase.length === 0) {
       return yield* reviewDiffFileError(input, "Could not resolve the branch comparison base.");
     }
@@ -2817,11 +2907,14 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         "Branch diff file expansion requires both base and head refs.",
       );
     }
-    const mergeBase = yield* runGitStdout(
-      "GitVcsDriver.getReviewDiffFilePatch.mergeBase",
-      repositoryRoot,
-      ["merge-base", input.baseRef, input.headRef],
-    ).pipe(Effect.map((value) => value.trim()));
+    const mergeBase =
+      input.comparisonMode === "direct"
+        ? input.baseRef
+        : yield* runGitStdout("GitVcsDriver.getReviewDiffFilePatch.mergeBase", repositoryRoot, [
+            "merge-base",
+            input.baseRef,
+            input.headRef,
+          ]).pipe(Effect.map((value) => value.trim()));
     if (mergeBase.length === 0) {
       return yield* reviewDiffFilePatchError(
         input,
@@ -2831,7 +2924,17 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const result = yield* executeGit(
       "GitVcsDriver.getReviewDiffFilePatch.branchRange",
       repositoryRoot,
-      ["diff", ...patchArgs, mergeBase, input.headRef, "--", pathspec],
+      [
+        "diff",
+        ...patchArgs,
+        ...(input.comparisonMode === "direct" ? ["--find-renames"] : []),
+        mergeBase,
+        input.headRef,
+        "--",
+        ...(input.comparisonMode === "direct" && input.oldPath !== input.newPath
+          ? [input.oldPath, input.newPath]
+          : [pathspec]),
+      ],
       patchOptions,
     );
     return {

@@ -78,6 +78,7 @@ import {
   ReviewDiffFilePatchResult,
   ReviewDiffPreviewError,
   ReviewDiffPreviewInput,
+  ReviewCommitDiffPreviewInput,
   ReviewDiffPreviewResult,
 } from "./review.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
@@ -289,6 +290,7 @@ export const WS_METHODS = {
 
   // Review methods
   reviewGetDiffPreview: "review.getDiffPreview",
+  reviewGetCommitDiffPreview: "review.getCommitDiffPreview",
   reviewGetDiffFileContents: "review.getDiffFileContents",
   reviewGetDiffFilePatch: "review.getDiffFilePatch",
 
@@ -948,6 +950,12 @@ const WsReviewGetDiffPreviewRpc = Rpc.make(WS_METHODS.reviewGetDiffPreview, {
   error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsReviewGetCommitDiffPreviewRpc = Rpc.make(WS_METHODS.reviewGetCommitDiffPreview, {
+  payload: ReviewCommitDiffPreviewInput,
+  success: ReviewDiffPreviewResult,
+  error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
+});
+
 const WsReviewGetDiffFileContentsRpc = Rpc.make(WS_METHODS.reviewGetDiffFileContents, {
   payload: ReviewDiffFileContentsInput,
   success: ReviewDiffFileContentsResult,
@@ -1277,6 +1285,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,
   WsReviewGetDiffPreviewRpc,
+  WsReviewGetCommitDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,
   WsReviewGetDiffFilePatchRpc,
   WsTerminalOpenRpc,

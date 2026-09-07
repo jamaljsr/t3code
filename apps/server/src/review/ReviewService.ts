@@ -14,6 +14,7 @@ import {
   type ReviewDiffFilePatchResult,
   type ReviewDiffPreviewError,
   type ReviewDiffPreviewInput,
+  type ReviewCommitDiffPreviewInput,
   type ReviewDiffPreviewResult,
 } from "@t3tools/contracts";
 
@@ -25,7 +26,7 @@ export class ReviewService extends Context.Service<
   ReviewService,
   {
     readonly getDiffPreview: (
-      input: ReviewDiffPreviewInput,
+      input: ReviewDiffPreviewInput | ReviewCommitDiffPreviewInput,
     ) => Effect.Effect<ReviewDiffPreviewResult, ReviewDiffPreviewError>;
     readonly getDiffFileContents: (
       input: ReviewDiffFileContentsInput,
