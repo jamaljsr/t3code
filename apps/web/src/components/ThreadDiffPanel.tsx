@@ -30,6 +30,7 @@ import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../diffPanelS
 import { useTheme } from "../hooks/useTheme";
 import {
   buildFileDiffRenderKey,
+  buildFileDiffContentVersion,
   getDiffLineStat,
   getRenderablePatch,
   resolveDiffThemeName,
@@ -62,7 +63,7 @@ import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefresh";
 import { useProject, useThread } from "../state/entities";
 import { resolveThreadRouteRef } from "../threadRoutes";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, useUpdateClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
@@ -332,8 +333,10 @@ export default function DiffPanel({
   const { resolvedTheme } = useTheme();
   const settings = useClientSettings();
   const [initialGitScope] = useState(initialGitScopeProp);
-  const diffRenderMode = useDiffPanelStore((state) => state.diffRenderMode);
-  const setDiffRenderMode = useDiffPanelStore((state) => state.setDiffRenderMode);
+  const diffRenderMode = settings.diffLayout;
+  const updateClientSettings = useUpdateClientSettings();
+  const setDiffRenderMode = (diffLayout: "stacked" | "split") =>
+    updateClientSettings({ diffLayout });
   const [wordWrap, setWordWrap] = useState(settings.wordWrap);
   const [diffIgnoreWhitespace, setDiffIgnoreWhitespace] = useState(settings.diffIgnoreWhitespace);
   const [baseRefQuery, setBaseRefQuery] = useState("");
@@ -897,6 +900,7 @@ export default function DiffPanel({
           fileDiff,
           filePath,
           fileKey: buildFileDiffRenderKey(fileDiff),
+          fileVersion: buildFileDiffContentVersion(fileDiff),
           collapsed: false,
         },
       ];
@@ -915,6 +919,7 @@ export default function DiffPanel({
         fileDiff,
         filePath: selectedPath,
         fileKey: buildFileDiffRenderKey(fileDiff),
+        fileVersion: buildFileDiffContentVersion(fileDiff),
         collapsed: false,
       },
     ];

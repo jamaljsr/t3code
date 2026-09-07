@@ -10,7 +10,7 @@ import {
 } from "../../lib/diffFileFocus";
 import { type TurnDiffFileChange } from "../../types";
 import { DiffCommitList, type DiffCommitListCommit } from "./DiffCommitList";
-import { DiffFileTree } from "./DiffFileTree";
+import { ThreadDiffFileTree } from "./ThreadDiffFileTree";
 
 export interface DiffFileTreeCommitListProps {
   readonly commits: ReadonlyArray<DiffCommitListCommit>;
@@ -71,7 +71,7 @@ export function DiffFileTreeColumn({
       style={{ width: `${width}px` }}
     >
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
-        <DiffFileTree
+        <ThreadDiffFileTree
           files={files}
           {...(selectedPath !== null ? { selectedPath } : {})}
           {...(loadingPath !== null ? { loadingPath } : {})}

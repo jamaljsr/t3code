@@ -62,6 +62,8 @@ export function ProjectScopeTriggerContent({
         <ProjectFavicon
           environmentId={scope.singleProject.environmentId}
           cwd={scope.singleProject.workspaceRoot}
+          projectName={scope.singleProject.title}
+          projectIcon={scope.singleProject.projectIcon}
           faviconPath={scope.singleProject.faviconPath}
           className="size-4 shrink-0"
         />
@@ -129,6 +131,8 @@ export function ProjectScopeSelector({
               <ProjectFavicon
                 environmentId={project.environmentId}
                 cwd={project.workspaceRoot}
+                projectName={project.title}
+                projectIcon={project.projectIcon}
                 faviconPath={project.faviconPath}
                 className="size-4 shrink-0"
               />

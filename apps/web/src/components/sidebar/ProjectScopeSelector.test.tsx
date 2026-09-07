@@ -149,6 +149,7 @@ function project(projectKey: string, displayName: string): SidebarProjectSnapsho
     memberProjects: [],
     memberProjectRefs: [{ environmentId: "local" as never, projectId: projectKey as never }],
     remoteEnvironmentLabels: [],
+    allRemoteMembersAreWsl: false,
   };
 }
 

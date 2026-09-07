@@ -27,11 +27,14 @@ New RPCs (`getDiffFilePatch`) are fine; store 1.0.3 never calls them.
 Implementation: `apps/web/src/components/ThreadDiffPanel.tsx`.
 `apps/web/src/components/DiffPanel.tsx` re-exports it. When merging `main`, keep-ours on `DiffPanel.tsx`. Port individual upstream fixes by hand if they still apply (do not take stacked-hunk UI).
 
+The personal tree is `diffs/ThreadDiffFileTree.tsx`. Upstream's `diffs/DiffFileTree.tsx` is used
+by the PR Code tab and can evolve independently.
+
 ## Folding upstream
 
 Completed folds should leave a maintenance note with the source refs, conflict resolutions,
 semantic repairs, and compatibility audit. See
-[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example.
+[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example, and [v0.0.39](personal-overlay-v0.0.39-merge.md) for the latest fold.
 
 On the machine the phone pairs to (`~/.t3`):
 
