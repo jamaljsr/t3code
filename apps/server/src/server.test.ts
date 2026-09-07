@@ -731,6 +731,7 @@ const buildAppUnderTest = (options?: {
           ...options.layers.reviewService,
         })
       : ReviewService.layer.pipe(
+          Layer.provide(SqlitePersistenceMemory),
           Layer.provideMerge(gitVcsDriverLayer),
           Layer.provide(vcsDriverRegistryLayer),
         );
@@ -7364,6 +7365,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("routes websocket rpc git methods", () =>
     Effect.gen(function* () {
+      const previewInputs: Array<
+        Parameters<ReviewService.ReviewService["Service"]["getDiffPreview"]>[0]
+      > = [];
       yield* buildAppUnderTest({
         config: {
           cwd: "/tmp/repo",
@@ -7532,7 +7536,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 sources: [
                   {
                     id: "working-tree",
-                    kind: "working-tree",
+                    kind: "working-tree" as const,
                     title: "Dirty worktree",
                     baseRef: "HEAD",
                     headRef: null,
@@ -7543,7 +7547,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                   },
                   {
                     id: "branch-range",
-                    kind: "branch-range",
+                    kind: "branch-range" as const,
                     title: "Against main",
                     baseRef: "main",
                     headRef: "feature/demo",
@@ -7553,7 +7557,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                     truncated: false,
                   },
                 ],
-              }),
+              }).pipe(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    previewInputs.push(input);
+                  }),
+                ),
+              ),
             getDiffFileContents: () =>
               Effect.succeed({
                 oldContents: "before\n",
@@ -7673,6 +7683,19 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
       assert.deepEqual(diffPreview.sources[0]?.files, []);
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.reviewGetCommitDiffPreview]({
+            cwd: "/tmp/repo",
+            commitOid: "abc123",
+            ignoreWhitespace: true,
+          }),
+        ),
+      );
+      assert.deepEqual(previewInputs, [
+        { cwd: "/tmp/repo" },
+        { cwd: "/tmp/repo", commitOid: "abc123", ignoreWhitespace: true },
+      ]);
 
       const diffFileContents = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>

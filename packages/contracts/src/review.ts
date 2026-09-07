@@ -10,6 +10,13 @@ export const ReviewDiffPreviewInput = Schema.Struct({
 });
 export type ReviewDiffPreviewInput = typeof ReviewDiffPreviewInput.Type;
 
+export const ReviewCommitDiffPreviewInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  commitOid: TrimmedNonEmptyString,
+  ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
+});
+export type ReviewCommitDiffPreviewInput = typeof ReviewCommitDiffPreviewInput.Type;
+
 export const ReviewDiffPreviewSourceKind = Schema.Literals(["working-tree", "branch-range"]);
 export type ReviewDiffPreviewSourceKind = typeof ReviewDiffPreviewSourceKind.Type;
 
@@ -60,6 +67,7 @@ export type ReviewDiffPreviewSource = typeof ReviewDiffPreviewSource.Type;
 export const ReviewDiffFilePatchInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   sourceKind: ReviewDiffPreviewSourceKind,
+  comparisonMode: Schema.optionalKey(Schema.Literal("direct")),
   changeType: ReviewDiffFileChangeType,
   baseRef: Schema.NullOr(TrimmedNonEmptyString),
   headRef: Schema.NullOr(TrimmedNonEmptyString),
@@ -78,6 +86,7 @@ export type ReviewDiffFilePatchResult = typeof ReviewDiffFilePatchResult.Type;
 export const ReviewDiffFileContentsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   sourceKind: ReviewDiffPreviewSourceKind,
+  comparisonMode: Schema.optionalKey(Schema.Literal("direct")),
   changeType: ReviewDiffFileChangeType,
   baseRef: Schema.NullOr(TrimmedNonEmptyString),
   headRef: Schema.NullOr(TrimmedNonEmptyString),

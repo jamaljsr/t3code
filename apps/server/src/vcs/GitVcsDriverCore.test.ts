@@ -896,6 +896,150 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       );
     });
 
+    it.effect(
+      "scopes files and contents to a selected commit despite later and dirty changes",
+      () =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          yield* initRepoWithCommit(cwd);
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          yield* writeTextFile(cwd, "README.md", "# selected\n");
+          yield* git(cwd, ["commit", "-am", "selected"]);
+          const oid = yield* git(cwd, ["rev-parse", "HEAD"]);
+          yield* writeTextFile(cwd, "later.txt", "later\n");
+          yield* git(cwd, ["add", "."]);
+          yield* git(cwd, ["commit", "-m", "later"]);
+          yield* writeTextFile(cwd, "README.md", "dirty\n");
+          const preview = yield* driver.getReviewDiffPreview({ cwd, commitOid: oid });
+          const source = preview.sources[0]!;
+          assert.deepStrictEqual(
+            source.files.map((file) => file.path),
+            ["README.md"],
+          );
+          assert.strictEqual(source.headRef, oid);
+          const input = makeReviewDiffFileContentsInput(cwd, {
+            sourceKind: "branch-range",
+            comparisonMode: "direct",
+            baseRef: source.baseRef,
+            headRef: source.headRef,
+          });
+          const contents = yield* driver.getReviewDiffFileContents(input);
+          assert.deepStrictEqual(contents, {
+            oldContents: "# test\n",
+            newContents: "# selected\n",
+          });
+          const patch = yield* driver.getReviewDiffFilePatch(input);
+          assert.include(patch.diff, "+# selected");
+          assert.notInclude(patch.diff, "dirty");
+          assert.notInclude(patch.diff, "later.txt");
+        }),
+    );
+
+    it.effect("previews root commits against an empty tree", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const preview = yield* driver.getReviewDiffPreview({ cwd, commitOid: "HEAD" });
+        const source = preview.sources[0]!;
+        assert.deepStrictEqual(
+          source.files.map((file) => [file.path, file.changeType]),
+          [["README.md", "new"]],
+        );
+        const input = makeReviewDiffFileContentsInput(cwd, {
+          sourceKind: "branch-range",
+          comparisonMode: "direct",
+          changeType: "new",
+          baseRef: source.baseRef,
+          headRef: source.headRef,
+        });
+        assert.deepStrictEqual(yield* driver.getReviewDiffFileContents(input), {
+          oldContents: "",
+          newContents: "# test\n",
+        });
+        assert.include((yield* driver.getReviewDiffFilePatch(input)).diff, "+# test");
+      }),
+    );
+
+    it.effect("compares merge commits to their first parent", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "side.txt", "side\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "side"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "main.txt", "main\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "main"]);
+        const parent = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* git(cwd, ["merge", "--no-ff", "side", "-m", "merge"]);
+        const source = (yield* driver.getReviewDiffPreview({ cwd, commitOid: "HEAD" })).sources[0]!;
+        assert.strictEqual(source.baseRef, parent);
+        assert.deepStrictEqual(
+          source.files.map((file) => file.path),
+          ["side.txt"],
+        );
+      }),
+    );
+
+    it.effect("keeps rename paths consistent between the commit manifest and patch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["mv", "README.md", "renamed.md"]);
+        yield* git(cwd, ["commit", "-m", "rename"]);
+        const source = (yield* driver.getReviewDiffPreview({ cwd, commitOid: "HEAD" })).sources[0]!;
+        const file = source.files[0]!;
+        assert.strictEqual(file.changeType, "rename-pure");
+        const input = makeReviewDiffFileContentsInput(cwd, {
+          sourceKind: "branch-range",
+          comparisonMode: "direct",
+          changeType: file.changeType,
+          baseRef: source.baseRef,
+          headRef: source.headRef,
+          oldPath: file.oldPath!,
+          newPath: file.path,
+        });
+        const patch = yield* driver.getReviewDiffFilePatch(input);
+        assert.include(patch.diff, "rename from README.md");
+        assert.include(patch.diff, "rename to renamed.md");
+        assert.deepStrictEqual(yield* driver.getReviewDiffFileContents(input), {
+          oldContents: "# test\n",
+          newContents: "# test\n",
+        });
+      }),
+    );
+
+    it.effect("supports empty and whitespace-only commits and rejects missing revisions", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["commit", "--allow-empty", "-m", "empty"]);
+        assert.isEmpty(
+          (yield* driver.getReviewDiffPreview({ cwd, commitOid: "HEAD" })).sources[0]!.files,
+        );
+        yield* writeTextFile(cwd, "README.md", "#   test\n");
+        yield* git(cwd, ["commit", "-am", "whitespace"]);
+        assert.lengthOf(
+          (yield* driver.getReviewDiffPreview({ cwd, commitOid: "HEAD" })).sources[0]!.files,
+          1,
+        );
+        assert.isEmpty(
+          (yield* driver.getReviewDiffPreview({ cwd, commitOid: "HEAD", ignoreWhitespace: true }))
+            .sources[0]!.files,
+        );
+        const error = yield* Effect.flip(
+          driver.getReviewDiffPreview({ cwd, commitOid: "does-not-exist" }),
+        );
+        assert.strictEqual(error._tag, "GitCommandError");
+      }),
+    );
+
     it.effect("attaches newest-first commits to the branch-range source only", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

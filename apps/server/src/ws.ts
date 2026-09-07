@@ -2562,6 +2562,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.reviewGetDiffPreview, review.getDiffPreview(input), {
             "rpc.aggregate": "review",
           }),
+        [WS_METHODS.reviewGetCommitDiffPreview]: (input) =>
+          observeRpcEffect(WS_METHODS.reviewGetCommitDiffPreview, review.getDiffPreview(input), {
+            "rpc.aggregate": "review",
+          }),
         [WS_METHODS.reviewGetDiffFileContents]: (input) =>
           observeRpcEffect(
             WS_METHODS.reviewGetDiffFileContents,
