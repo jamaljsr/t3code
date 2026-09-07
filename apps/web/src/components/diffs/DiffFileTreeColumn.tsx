@@ -18,6 +18,9 @@ export interface DiffFileTreeCommitListProps {
   readonly commitsError: boolean;
   readonly showUncommitted: boolean;
   readonly workingTreeSelected: boolean;
+  readonly selectedCommitOid: string | null;
+  readonly onSelectCommit: (oid: string) => void;
+  readonly onSelectAllChanges: () => void;
   readonly listIdentity: string;
   readonly timestampFormat: TimestampFormat;
   readonly onSelectUncommitted: () => void;

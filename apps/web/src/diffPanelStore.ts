@@ -6,7 +6,11 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { resolveStorage } from "./lib/storage";
 
 export type DiffPanelSelection =
-  | { kind: "branch"; baseRef: string | null }
+  | {
+      kind: "branch";
+      baseRef: string | null;
+      commit?: { oid: string; cwd: string; branch: string | null };
+    }
   | { kind: "unstaged" }
   | { kind: "turn"; turnId: TurnId; filePath: string | null; revealRequestId: number };
 
@@ -17,6 +21,10 @@ interface DiffPanelStoreState {
   byThreadKey: Record<string, DiffPanelSelection>;
   branchBaseRefByThreadKey: Record<string, string | null>;
   selectGitScope: (ref: ScopedThreadRef, scope: "branch" | "unstaged") => void;
+  selectCommit: (
+    ref: ScopedThreadRef,
+    commit: { oid: string; cwd: string; branch: string | null },
+  ) => void;
   selectBranchBaseRef: (ref: ScopedThreadRef, baseRef: string | null) => void;
   selectTurn: (ref: ScopedThreadRef, turnId: TurnId, filePath?: string) => void;
   reconcileTurnSelection: (ref: ScopedThreadRef, availableTurnIds: ReadonlyArray<TurnId>) => void;
@@ -53,6 +61,24 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
               previous?.kind === "branch"
                 ? { ...state.branchBaseRefByThreadKey, [threadKey]: previous.baseRef }
                 : state.branchBaseRefByThreadKey,
+          };
+        }),
+      selectCommit: (ref, commit) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          const previous = state.byThreadKey[threadKey];
+          return {
+            byThreadKey: {
+              ...state.byThreadKey,
+              [threadKey]: {
+                kind: "branch",
+                baseRef:
+                  previous?.kind === "branch"
+                    ? previous.baseRef
+                    : (state.branchBaseRefByThreadKey[threadKey] ?? null),
+                commit,
+              },
+            },
           };
         }),
       selectBranchBaseRef: (ref, baseRef) =>
@@ -141,4 +167,22 @@ export function selectThreadDiffPanelSelection(
     byThreadKey[scopedThreadKey(ref)] ??
     (hasWorkingTreeChanges ? DEFAULT_WORKING_TREE_SELECTION : DEFAULT_SELECTION)
   );
+}
+
+export function resolveSelectedCommitOid(
+  selection: DiffPanelSelection,
+  cwd: string | undefined,
+  branch: string | null,
+  preview: {
+    readonly cwd: string;
+    readonly commits: ReadonlyArray<{ readonly oid: string }>;
+  } | null,
+): string | null {
+  if (selection.kind !== "branch" || !selection.commit) return null;
+  return selection.commit.cwd === cwd &&
+    selection.commit.branch === branch &&
+    preview?.cwd === cwd &&
+    preview.commits.some((commit) => commit.oid === selection.commit?.oid)
+    ? selection.commit.oid
+    : null;
 }

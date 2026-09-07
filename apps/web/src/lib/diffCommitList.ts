@@ -1,11 +1,17 @@
 export function shouldShowDiffCommitPane(input: {
   readonly selectedTurnId: string | null;
+  readonly selectedCommitOid?: string | null;
   readonly commitCount: number;
   readonly showUncommitted: boolean;
   readonly commitsError: boolean;
 }): boolean {
   if (input.selectedTurnId !== null) return false;
-  return input.commitCount > 0 || input.showUncommitted || input.commitsError;
+  return (
+    input.selectedCommitOid != null ||
+    input.commitCount > 0 ||
+    input.showUncommitted ||
+    input.commitsError
+  );
 }
 
 export function toggleExpandedCommitOid(

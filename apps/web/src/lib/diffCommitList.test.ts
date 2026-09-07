@@ -14,6 +14,18 @@ describe("shouldShowDiffCommitPane", () => {
     ).toBe(false);
   });
 
+  it("keeps All Changes reachable when a selected commit has no files or disappears from the list", () => {
+    expect(
+      shouldShowDiffCommitPane({
+        selectedTurnId: null,
+        selectedCommitOid: "aaa",
+        commitCount: 0,
+        showUncommitted: false,
+        commitsError: false,
+      }),
+    ).toBe(true);
+  });
+
   it("hides when the range is empty and the working tree is clean", () => {
     expect(
       shouldShowDiffCommitPane({

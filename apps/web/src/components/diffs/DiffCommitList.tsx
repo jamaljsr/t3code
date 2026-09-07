@@ -20,6 +20,9 @@ export function DiffCommitList(props: {
   readonly commitsError: boolean;
   readonly showUncommitted: boolean;
   readonly workingTreeSelected: boolean;
+  readonly selectedCommitOid: string | null;
+  readonly onSelectCommit: (oid: string) => void;
+  readonly onSelectAllChanges: () => void;
   readonly listIdentity: string;
   readonly timestampFormat: TimestampFormat;
   readonly onSelectUncommitted: () => void;
@@ -31,6 +34,9 @@ export function DiffCommitList(props: {
     commitsError,
     showUncommitted,
     workingTreeSelected,
+    selectedCommitOid,
+    onSelectCommit,
+    onSelectAllChanges,
     listIdentity,
     timestampFormat,
     onSelectUncommitted,
@@ -45,6 +51,7 @@ export function DiffCommitList(props: {
   if (
     !shouldShowDiffCommitPane({
       selectedTurnId: null,
+      selectedCommitOid,
       commitCount: commits.length,
       showUncommitted,
       commitsError,
@@ -71,41 +78,69 @@ export function DiffCommitList(props: {
           Uncommitted
         </button>
       ) : null}
+      <button
+        type="button"
+        aria-current={!workingTreeSelected && selectedCommitOid === null ? "true" : undefined}
+        className={cn(
+          "flex w-full items-center rounded-xl px-3 py-1 text-left text-[11px] transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          !workingTreeSelected && selectedCommitOid === null && "bg-accent/60",
+        )}
+        onClick={onSelectAllChanges}
+      >
+        All Changes
+      </button>
       {commits.map((commit) => {
         const isExpanded = expanded.has(commit.oid);
         const body = commit.body.trim();
         return (
           <div key={commit.oid}>
-            <button
-              type="button"
-              aria-expanded={body.length > 0 ? isExpanded : undefined}
-              className="flex w-full items-start gap-1.5 rounded-xl px-3 py-1 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => {
-                if (expandedOidsProp) return;
-                setExpandedOids((current) => toggleExpandedCommitOid(current, commit.oid));
-              }}
+            <div
+              className={cn(
+                "flex items-start rounded-xl",
+                selectedCommitOid === commit.oid && "bg-accent/60",
+              )}
             >
-              <ChevronRightIcon
-                aria-hidden
-                className={cn(
-                  "mt-0.5 size-3.5 shrink-0 text-muted-foreground/70",
-                  isExpanded && body.length > 0 && "rotate-90",
-                )}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-2">
-                  <span className="min-w-0 truncate text-[11px] text-foreground/90">
-                    {commit.subject}
+              {body.length > 0 ? (
+                <button
+                  type="button"
+                  aria-label={`${isExpanded ? "Collapse" : "Expand"} commit message: ${commit.subject}`}
+                  aria-expanded={isExpanded}
+                  className="mt-1 ml-3 shrink-0 rounded-sm text-muted-foreground/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => {
+                    if (expandedOidsProp) return;
+                    setExpandedOids((current) => toggleExpandedCommitOid(current, commit.oid));
+                  }}
+                >
+                  <ChevronRightIcon
+                    aria-hidden
+                    className={cn("size-3.5", isExpanded && "rotate-90")}
+                  />
+                </button>
+              ) : (
+                <span aria-hidden className="ml-3 w-3.5 shrink-0" />
+              )}
+              <button
+                type="button"
+                aria-current={selectedCommitOid === commit.oid ? "true" : undefined}
+                className="flex min-w-0 flex-1 rounded-xl py-1 pr-3 pl-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => onSelectCommit(commit.oid)}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className="min-w-0 truncate text-[11px] text-foreground/90">
+                      {commit.subject}
+                    </span>
+                    <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+                      {commit.oid.slice(0, 7)}
+                    </span>
                   </span>
-                  <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
-                    {commit.oid.slice(0, 7)}
+                  <span className="block truncate text-[10px] text-muted-foreground">
+                    {commit.authorName} ·{" "}
+                    {formatShortTimestamp(commit.committedAt, timestampFormat)}
                   </span>
                 </span>
-                <span className="block truncate text-[10px] text-muted-foreground">
-                  {commit.authorName} · {formatShortTimestamp(commit.committedAt, timestampFormat)}
-                </span>
-              </span>
-            </button>
+              </button>
+            </div>
             {isExpanded && body.length > 0 ? (
               <p
                 data-commit-body

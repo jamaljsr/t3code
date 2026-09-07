@@ -34,6 +34,9 @@ function render(
       commitsError={false}
       showUncommitted={false}
       workingTreeSelected={false}
+      selectedCommitOid={null}
+      onSelectCommit={() => {}}
+      onSelectAllChanges={() => {}}
       listIdentity="hash:main"
       timestampFormat="24-hour"
       onSelectUncommitted={() => {}}

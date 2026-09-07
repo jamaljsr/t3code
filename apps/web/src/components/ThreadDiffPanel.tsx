@@ -6,6 +6,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
 import {
@@ -26,7 +27,11 @@ import { type DraftId } from "../composerDraftStore";
 import { openDiffFilePrimaryAction } from "../diffFileActions";
 import { useCheckpointDiff } from "~/lib/checkpointDiffState";
 import { cn } from "~/lib/utils";
-import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../diffPanelStore";
+import {
+  resolveSelectedCommitOid,
+  selectThreadDiffPanelSelection,
+  useDiffPanelStore,
+} from "../diffPanelStore";
 import { useTheme } from "../hooks/useTheme";
 import {
   buildFileDiffRenderKey,
@@ -443,7 +448,43 @@ export default function DiffPanel({
 
   const selectedTurnId = diffSelection.kind === "turn" ? diffSelection.turnId : null;
   const selectedGitScope = diffSelection.kind === "unstaged" ? "unstaged" : "branch";
-  const selectedBaseRef = diffSelection.kind === "branch" ? diffSelection.baseRef : null;
+  const selectedBaseRef = useDiffPanelStore((state) =>
+    diffSelection.kind === "branch"
+      ? diffSelection.baseRef
+      : routeThreadRef
+        ? (state.branchBaseRefByThreadKey[scopedThreadKey(routeThreadRef)] ?? null)
+        : null,
+  );
+  const branchDiffPreview = useEnvironmentQuery(
+    selectedTurnId === null && activeThread && activeCwd
+      ? reviewEnvironment.diffPreview({
+          environmentId: activeThread.environmentId,
+          input: {
+            cwd: activeCwd,
+            ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
+            ignoreWhitespace: diffIgnoreWhitespace,
+          },
+        })
+      : null,
+  );
+  const workingTreeSource = branchDiffPreview.data?.sources.find(
+    (source) => source.kind === "working-tree",
+  );
+  const branchRangeSource = branchDiffPreview.data?.sources.find(
+    (source) => source.kind === "branch-range",
+  );
+  const showUncommitted = (workingTreeSource?.files.length ?? 0) > 0;
+  const branchCommits = branchRangeSource?.commits ?? [];
+  const selectedCommitOid = resolveSelectedCommitOid(
+    diffSelection,
+    activeCwd,
+    gitStatusQuery.data?.refName ?? null,
+    branchDiffPreview.data && !branchRangeSource?.commitsError
+      ? { cwd: branchDiffPreview.data.cwd, commits: branchCommits }
+      : null,
+  );
+  const branchChangesSelected =
+    selectedTurnId === null && selectedGitScope === "branch" && selectedCommitOid === null;
   const selectedFilePath = diffSelection.kind === "turn" ? diffSelection.filePath : null;
   const selectedFileRevealRequestId =
     diffSelection.kind === "turn" ? diffSelection.revealRequestId : 0;
@@ -458,13 +499,19 @@ export default function DiffPanel({
   const latestTurn = orderedTurnDiffSummaries[0];
   const selectedScopeLabel =
     selectedTurnId === null
-      ? selectedGitScope === "unstaged"
-        ? "Working tree"
-        : "Branch changes"
+      ? selectedCommitOid
+        ? `Commit ${selectedCommitOid.slice(0, 7)}`
+        : selectedGitScope === "unstaged"
+          ? "Working tree"
+          : "Branch changes"
       : selectedTurn?.turnId === latestTurn?.turnId
         ? "Latest turn"
         : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
-  const reviewSectionId = selectedTurn ? `turn:${selectedTurn.turnId}` : selectedGitScope;
+  const reviewSectionId = selectedTurn
+    ? `turn:${selectedTurn.turnId}`
+    : selectedCommitOid
+      ? `commit:${selectedCommitOid}`
+      : selectedGitScope;
   const collapseScopeKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}:${reviewSectionId}`
     : null;
@@ -484,9 +531,11 @@ export default function DiffPanel({
 
   const reviewSectionTitle = selectedTurn
     ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
-    : selectedGitScope === "unstaged"
-      ? "Working tree"
-      : "Branch changes";
+    : selectedCommitOid
+      ? `Commit ${selectedCommitOid.slice(0, 7)}`
+      : selectedGitScope === "unstaged"
+        ? "Working tree"
+        : "Branch changes";
   const selectedCheckpointRange = useMemo(
     () =>
       typeof selectedCheckpointTurnCount === "number"
@@ -507,18 +556,6 @@ export default function DiffPanel({
       cacheScope: selectedTurn ? `turn:${selectedTurn.turnId}` : null,
     },
     { enabled: isGitRepo && selectedTurn !== undefined },
-  );
-  const branchDiffPreview = useEnvironmentQuery(
-    selectedTurnId === null && activeThread && activeCwd
-      ? reviewEnvironment.diffPreview({
-          environmentId: activeThread.environmentId,
-          input: {
-            cwd: activeCwd,
-            ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
-            ignoreWhitespace: diffIgnoreWhitespace,
-          },
-        })
-      : null,
   );
   const refreshBranchDiffPreview = branchDiffPreview.refresh;
   const canRefreshGitDiff =
@@ -541,28 +578,34 @@ export default function DiffPanel({
     resourceKey: `diff:${activeThreadRefreshKey ?? ""}`,
   });
 
-  const selectedGitSource = branchDiffPreview.data?.sources.find(
+  const commitPreviewCwd = activeCwd;
+  const commitDiffPreview = useEnvironmentQuery(
+    selectedCommitOid && activeThread && commitPreviewCwd
+      ? reviewEnvironment.commitDiffPreview({
+          environmentId: activeThread.environmentId,
+          input: {
+            cwd: commitPreviewCwd,
+            commitOid: selectedCommitOid,
+            ignoreWhitespace: diffIgnoreWhitespace,
+          },
+        })
+      : null,
+  );
+  const selectedGitPreview = selectedCommitOid ? commitDiffPreview : branchDiffPreview;
+  const isRefreshingGitDiff =
+    branchDiffPreview.isPending || (selectedCommitOid !== null && commitDiffPreview.isPending);
+  const selectedGitSource = selectedGitPreview.data?.sources.find(
     (source) => source.kind === (selectedGitScope === "unstaged" ? "working-tree" : "branch-range"),
   );
-  const workingTreeSource = branchDiffPreview.data?.sources.find(
-    (source) => source.kind === "working-tree",
-  );
-  const branchRangeSource = branchDiffPreview.data?.sources.find(
-    (source) => source.kind === "branch-range",
-  );
-  const showUncommitted = (workingTreeSource?.files.length ?? 0) > 0;
-  const branchCommits = branchRangeSource?.commits ?? [];
   const showCommitList = shouldShowDiffCommitPane({
     selectedTurnId,
+    selectedCommitOid,
     commitCount: branchCommits.length,
     showUncommitted,
     commitsError: branchRangeSource?.commitsError === true,
   });
   const localBranchRefs = useEnvironmentQuery(
-    selectedTurnId === null &&
-      selectedGitScope === "branch" &&
-      activeThread &&
-      branchDiffPreview.data?.cwd
+    branchChangesSelected && activeThread && branchDiffPreview.data?.cwd
       ? vcsEnvironment.listRefs({
           environmentId: activeThread.environmentId,
           input: {
@@ -576,10 +619,7 @@ export default function DiffPanel({
       : null,
   );
   const remoteBranchRefs = useEnvironmentQuery(
-    selectedTurnId === null &&
-      selectedGitScope === "branch" &&
-      activeThread &&
-      branchDiffPreview.data?.cwd
+    branchChangesSelected && activeThread && branchDiffPreview.data?.cwd
       ? vcsEnvironment.listRefs({
           environmentId: activeThread.environmentId,
           input: {
@@ -609,8 +649,8 @@ export default function DiffPanel({
   const selectedPatch = selectedTurn ? activeCheckpointDiff.data?.diff : undefined;
   const isLoadingSelectedPatch = selectedTurn
     ? activeCheckpointDiff.isPending
-    : branchDiffPreview.isPending;
-  const selectedPatchError = selectedTurn ? activeCheckpointDiff.error : branchDiffPreview.error;
+    : selectedGitPreview.isPending;
+  const selectedPatchError = selectedTurn ? activeCheckpointDiff.error : selectedGitPreview.error;
   const hasResolvedPatch = typeof selectedPatch === "string";
   const hasNoNetChanges = selectedTurn
     ? hasResolvedPatch && selectedPatch.trim().length === 0
@@ -685,7 +725,7 @@ export default function DiffPanel({
     showBinaryGitFile,
   ]);
   const renderablePatch = selectedTurn ? turnRenderablePatch : gitRenderablePatch;
-  const previewCwd = branchDiffPreview.data?.cwd;
+  const previewCwd = selectedGitPreview.data?.cwd;
   const selectedGitFilePath = selectedGitFile?.path ?? null;
   const selectedGitFileOldPath = selectedGitFile?.oldPath ?? null;
   const selectedGitFileChangeType = selectedGitFile?.changeType;
@@ -743,6 +783,7 @@ export default function DiffPanel({
     const sharedInput = {
       cwd: previewCwd,
       sourceKind: selectedGitSourceKind,
+      ...(selectedCommitOid ? { comparisonMode: "direct" as const } : {}),
       changeType,
       baseRef: selectedGitSourceBaseRef,
       headRef: selectedGitSourceHeadRef,
@@ -824,6 +865,7 @@ export default function DiffPanel({
     selectedGitSourceHeadRef,
     selectedGitSourceId,
     selectedGitSourceKind,
+    selectedCommitOid,
     selectedTurnId,
   ]);
 
@@ -905,7 +947,7 @@ export default function DiffPanel({
     ];
   }, [gitRenderablePatch, renderableFiles, selectedPath, selectedTurnId]);
   const diffFileKeys = useMemo(() => codeViewFiles.map((file) => file.fileKey), [codeViewFiles]);
-  const showFileTree = fileTreeVisible && treeFiles.length > 0;
+  const showFileTree = fileTreeVisible && (treeFiles.length > 0 || showCommitList);
   const focusedFile =
     selectedPath === null
       ? null
@@ -1065,11 +1107,7 @@ export default function DiffPanel({
               <span>Working tree</span>
             </DropdownMenuItem>
             <DropdownMenuItem
-              className={
-                selectedTurnId === null && selectedGitScope === "branch"
-                  ? "bg-foreground/[0.08]"
-                  : undefined
-              }
+              className={branchChangesSelected ? "bg-foreground/[0.08]" : undefined}
               onClick={() => selectGitScope("branch")}
             >
               <span>Branch changes</span>
@@ -1113,7 +1151,7 @@ export default function DiffPanel({
             </DropdownMenuSub>
           </DropdownMenuContent>
         </DropdownMenu>
-        {selectedTurnId === null && selectedGitScope === "branch" && selectedGitSource?.baseRef && (
+        {branchChangesSelected && selectedGitSource?.baseRef && (
           <div
             className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-xs text-muted-foreground"
             aria-label={`Comparing ${selectedGitSource.headRef ?? "HEAD"} against ${selectedGitSource.baseRef}`}
@@ -1260,21 +1298,22 @@ export default function DiffPanel({
                   type="button"
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={branchDiffPreview.isPending ? "Refreshing diff" : "Refresh diff"}
-                  onClick={refreshBranchDiffPreview}
+                  aria-label={isRefreshingGitDiff ? "Refreshing diff" : "Refresh diff"}
+                  onClick={() => {
+                    refreshBranchDiffPreview();
+                    if (selectedCommitOid) commitDiffPreview.refresh();
+                  }}
                 />
               }
             >
-              <RefreshCwIcon
-                className={cn("size-3.5", branchDiffPreview.isPending && "animate-spin")}
-              />
+              <RefreshCwIcon className={cn("size-3.5", isRefreshingGitDiff && "animate-spin")} />
             </TooltipTrigger>
             <TooltipPopup side="top">
-              {branchDiffPreview.isPending ? "Refreshing diff…" : "Refresh diff"}
+              {isRefreshingGitDiff ? "Refreshing diff…" : "Refresh diff"}
             </TooltipPopup>
           </Tooltip>
         )}
-        {treeFiles.length > 0 && (
+        {(treeFiles.length > 0 || showCommitList) && (
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1396,6 +1435,16 @@ export default function DiffPanel({
                         commitsError: branchRangeSource?.commitsError === true,
                         showUncommitted,
                         workingTreeSelected: selectedGitScope === "unstaged",
+                        selectedCommitOid,
+                        onSelectAllChanges: () => selectGitScope("branch"),
+                        onSelectCommit: (oid) => {
+                          if (!routeThreadRef || !activeCwd) return;
+                          useDiffPanelStore.getState().selectCommit(routeThreadRef, {
+                            oid,
+                            cwd: activeCwd,
+                            branch: gitStatusQuery.data?.refName ?? null,
+                          });
+                        },
                         listIdentity: `${branchRangeSource?.diffHash ?? ""}:${branchRangeSource?.baseRef ?? ""}`,
                         timestampFormat: settings.timestampFormat,
                         onSelectUncommitted: () => selectGitScope("unstaged"),
@@ -1420,14 +1469,16 @@ export default function DiffPanel({
                   <p>Cannot preview binary file.</p>
                 </div>
               ) : !renderablePatch ? (
-                isLoadingSelectedPatch ? (
+                isLoadingSelectedPatch || gitFilePane.loadingPath !== null ? (
                   <DiffPanelLoadingState
                     label={
                       selectedTurn
                         ? "Loading checkpoint diff..."
-                        : selectedGitScope === "unstaged"
-                          ? "Loading working tree diff..."
-                          : "Loading branch diff..."
+                        : selectedCommitOid
+                          ? "Loading commit diff..."
+                          : selectedGitScope === "unstaged"
+                            ? "Loading working tree diff..."
+                            : "Loading branch diff..."
                     }
                   />
                 ) : selectedTurn || hasNoNetChanges ? (
