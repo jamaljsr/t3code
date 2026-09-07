@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 import { useAtomValue } from "@effect/atom-react";
 import type { FileDiffContentsLoader } from "@pierre/diffs";
 import { useParams } from "@tanstack/react-router";
@@ -21,7 +22,7 @@ import {
   SearchIcon,
   TextWrapIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { type DraftId } from "../composerDraftStore";
 import { openDiffFilePrimaryAction } from "../diffFileActions";
@@ -73,6 +74,8 @@ import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
+import { createDiffFileCache, diffFileCacheKey, type CachedDiffFile } from "../lib/diffFileCache";
+import { DiffFileTransition } from "./diffs/DiffFileTransition";
 import { DiffFileTreeColumn } from "./diffs/DiffFileTreeColumn";
 import { DiffHunkNav } from "./diffs/DiffHunkNav";
 import { DiffHunkScrollbarMarks } from "./diffs/DiffHunkScrollbarMarks";
@@ -351,14 +354,13 @@ export default function DiffPanel({
     readonly requestId: number;
   } | null>(null);
   const [gitFilePane, setGitFilePane] = useState<{
-    readonly displayedFile: {
-      readonly threadKey: string | null;
-      readonly sourceId: string;
-      readonly diffHash: string;
-      readonly diff: string;
-      readonly oldContents: string;
-      readonly newContents: string;
-    } | null;
+    readonly displayedFile:
+      | (CachedDiffFile & {
+          readonly threadKey: string | null;
+          readonly sourceId: string;
+          readonly diffHash: string;
+        })
+      | null;
     readonly loadingPath: string | null;
     readonly fileError: string | null;
   }>({
@@ -373,7 +375,7 @@ export default function DiffPanel({
     readonly fileKey: string;
     readonly mountKey: string;
   } | null>(null);
-  const codeViewRef = useRef<AnnotatableCodeViewHandle>(null);
+  const [gitFileCache] = useState(() => createDiffFileCache());
   const previousSelectedPathRef = useRef<string | null>(null);
   const gitFileLoadRequestIdRef = useRef(0);
 
@@ -713,13 +715,10 @@ export default function DiffPanel({
     ) {
       return null;
     }
-    return getRenderablePatch(displayedFile.diff, `diff-panel:${resolvedTheme}`, {
-      compactPartialHunkOffsets: false,
-    });
+    return displayedFile.renderablePatch;
   }, [
     activeThreadRefreshKey,
     gitFilePane.displayedFile,
-    resolvedTheme,
     selectedGitSource?.id,
     selectedTurnId,
     showBinaryGitFile,
@@ -736,6 +735,9 @@ export default function DiffPanel({
   const selectedGitSourceHeadRef = selectedGitSource?.headRef ?? null;
   const selectedGitSourceDiffHash = selectedGitSource?.diffHash ?? null;
   const environmentId = activeThread?.environmentId ?? null;
+  const previewVersion = selectedGitPreview.data
+    ? DateTime.toEpochMillis(selectedGitPreview.data.generatedAt)
+    : 0;
 
   useEffect(() => {
     if (
@@ -779,6 +781,30 @@ export default function DiffPanel({
       loadingPath: newPath,
       fileError: null,
     }));
+
+    const cacheKey = diffFileCacheKey({
+      environmentId,
+      cwd: previewCwd,
+      sourceId,
+      baseRef: selectedGitSourceBaseRef,
+      headRef: selectedGitSourceHeadRef,
+      diffHash: sourceDiffHash,
+      oldPath,
+      newPath,
+      ignoreWhitespace: diffIgnoreWhitespace,
+      commitOid: selectedCommitOid,
+      previewVersion,
+      mutationId: workspaceMutationId,
+    });
+    const cached = gitFileCache.get(cacheKey);
+    if (cached) {
+      setGitFilePane({
+        displayedFile: { ...cached, threadKey, sourceId, diffHash: sourceDiffHash },
+        loadingPath: null,
+        fileError: null,
+      });
+      return;
+    }
 
     const sharedInput = {
       cwd: previewCwd,
@@ -841,9 +867,7 @@ export default function DiffPanel({
           threadKey,
           sourceId,
           diffHash: sourceDiffHash,
-          diff: resolved.diff,
-          oldContents: resolved.oldContents,
-          newContents: resolved.newContents,
+          ...gitFileCache.set(cacheKey, resolved),
         },
         loadingPath: null,
         fileError: null,
@@ -855,7 +879,10 @@ export default function DiffPanel({
     environmentId,
     getDiffFileContents,
     getDiffFilePatch,
+    gitFileCache,
     previewCwd,
+    previewVersion,
+    workspaceMutationId,
     selectedGitFileBinary,
     selectedGitFileChangeType,
     selectedGitFileOldPath,
@@ -946,6 +973,12 @@ export default function DiffPanel({
       },
     ];
   }, [gitRenderablePatch, renderableFiles, selectedPath, selectedTurnId]);
+  const viewerIdentity = codeViewFiles[0]?.fileKey ?? "empty";
+  const codeViewRef = useMemo(
+    () => createRef<AnnotatableCodeViewHandle>(),
+    // oxlint-disable-next-line react/memo-dependencies -- Keep separate refs while the incoming and outgoing viewers are both mounted.
+    [codeViewMountKey, viewerIdentity],
+  );
   const diffFileKeys = useMemo(() => codeViewFiles.map((file) => file.fileKey), [codeViewFiles]);
   const showFileTree = fileTreeVisible && (treeFiles.length > 0 || showCommitList);
   const focusedFile =
@@ -997,7 +1030,7 @@ export default function DiffPanel({
       });
       codeViewRef.current?.scrollTo(hunkScrollTarget(fileDiff, fileKey, nextIndex));
     },
-    [focusedHunkIndexes],
+    [codeViewRef, focusedHunkIndexes],
   );
   const diffLineStat = useMemo(() => {
     if (selectedTurnId === null) {
@@ -1012,6 +1045,11 @@ export default function DiffPanel({
     mountKey: codeViewMountKey,
     revealedMountKey: revealedFile?.mountKey ?? null,
   });
+
+  const isSwitchingFile =
+    holdFileReveal ||
+    gitFilePane.loadingPath !== null ||
+    codeViewFiles[0]?.filePath !== selectedPath;
 
   useEffect(() => {
     const {
@@ -1041,7 +1079,7 @@ export default function DiffPanel({
     return () => {
       cancelled = true;
     };
-  }, [codeViewMountKey, focusedFile?.fileKey, selectedFileRevealRequestId, treeFocus]);
+  }, [codeViewRef, codeViewMountKey, focusedFile?.fileKey, selectedFileRevealRequestId, treeFocus]);
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -1491,73 +1529,84 @@ export default function DiffPanel({
                   </div>
                 ) : null
               ) : renderablePatch.kind === "files" ? (
-                <div
-                  className={cn("relative min-h-0 flex-1", holdFileReveal && "invisible")}
-                  onClickCapture={(event) => {
-                    const composedPath = event.nativeEvent.composedPath?.() ?? [];
-                    for (const node of composedPath) {
-                      if (!(node instanceof HTMLElement)) continue;
-                      if (node instanceof HTMLButtonElement || node instanceof HTMLAnchorElement) {
-                        return;
-                      }
-                    }
-                    const title = composedPath.find(
-                      (node): node is HTMLElement =>
-                        node instanceof HTMLElement && node.hasAttribute("data-title"),
-                    );
-                    const filePath = title?.textContent?.trim();
-                    // The filename remains the explicit "open in editor" affordance.
-                    if (filePath) {
-                      openDiffFile(filePath);
-                    }
-                  }}
+                <DiffFileTransition
+                  key={codeViewMountKey}
+                  identity={viewerIdentity}
+                  ready={!holdFileReveal}
+                  loadingPath={isSwitchingFile && !gitFilePane.fileError ? selectedPath : null}
+                  disableInteraction={isSwitchingFile}
                 >
-                  <AnnotatableCodeView
-                    key={collapseScopeKey ?? reviewSectionId}
-                    viewerRef={codeViewRef}
-                    codeViewKey={codeViewMountKey}
-                    className="diff-render-surface h-full min-h-0 overflow-auto"
-                    files={codeViewFiles}
-                    sectionId={reviewSectionId}
-                    sectionTitle={reviewSectionTitle}
-                    composerDraftTarget={composerDraftTarget}
-                    renderHeaderPrefix={() => null}
-                    unsafeCSSExtra={DIFF_PANEL_UNSAFE_CSS}
-                    renderHeaderMetadata={(fileDiff, fileKey, collapsed) => {
-                      if (
-                        !shouldRenderDiffHunkNav({
-                          collapsed,
-                          hunkCount: fileDiff.hunks.length,
-                        })
-                      ) {
-                        return null;
+                  <div
+                    className="relative flex min-h-0 flex-1 flex-col"
+                    onClickCapture={(event) => {
+                      const composedPath = event.nativeEvent.composedPath?.() ?? [];
+                      for (const node of composedPath) {
+                        if (!(node instanceof HTMLElement)) continue;
+                        if (
+                          node instanceof HTMLButtonElement ||
+                          node instanceof HTMLAnchorElement
+                        ) {
+                          return;
+                        }
                       }
-                      return (
-                        <DiffHunkNav
-                          hunkIndex={stepDiffHunkIndex(
-                            focusedHunkIndexes.get(fileKey) ?? 0,
-                            fileDiff.hunks.length,
-                            0,
-                          )}
-                          hunkCount={fileDiff.hunks.length}
-                          onPrevious={() => goToHunk(fileDiff, fileKey, -1)}
-                          onNext={() => goToHunk(fileDiff, fileKey, 1)}
-                        />
+                      const title = composedPath.find(
+                        (node): node is HTMLElement =>
+                          node instanceof HTMLElement && node.hasAttribute("data-title"),
                       );
+                      const filePath = title?.textContent?.trim();
+                      // The filename remains the explicit "open in editor" affordance.
+                      if (filePath) {
+                        openDiffFile(filePath);
+                      }
                     }}
-                    options={{
-                      diffStyle: diffRenderMode === "split" ? "split" : "unified",
-                      lineDiffType: "none",
-                      overflow: wordWrap ? "wrap" : "scroll",
-                      theme: resolveDiffThemeName(resolvedTheme),
-                      themeType: resolvedTheme as DiffThemeType,
-                      stickyHeaders: true,
-                      ...(loadDiffFiles ? { loadDiffFiles } : {}),
-                      expandUnchanged,
-                    }}
-                  />
-                  <DiffHunkScrollbarMarks marks={hunkScrollbarMarks} />
-                </div>
+                  >
+                    <AnnotatableCodeView
+                      key={collapseScopeKey ?? reviewSectionId}
+                      viewerRef={codeViewRef}
+                      codeViewKey={codeViewMountKey}
+                      className="diff-render-surface h-full min-h-0 overflow-auto"
+                      files={codeViewFiles}
+                      sectionId={reviewSectionId}
+                      sectionTitle={reviewSectionTitle}
+                      composerDraftTarget={composerDraftTarget}
+                      renderHeaderPrefix={() => null}
+                      unsafeCSSExtra={DIFF_PANEL_UNSAFE_CSS}
+                      renderHeaderMetadata={(fileDiff, fileKey, collapsed) => {
+                        if (
+                          !shouldRenderDiffHunkNav({
+                            collapsed,
+                            hunkCount: fileDiff.hunks.length,
+                          })
+                        ) {
+                          return null;
+                        }
+                        return (
+                          <DiffHunkNav
+                            hunkIndex={stepDiffHunkIndex(
+                              focusedHunkIndexes.get(fileKey) ?? 0,
+                              fileDiff.hunks.length,
+                              0,
+                            )}
+                            hunkCount={fileDiff.hunks.length}
+                            onPrevious={() => goToHunk(fileDiff, fileKey, -1)}
+                            onNext={() => goToHunk(fileDiff, fileKey, 1)}
+                          />
+                        );
+                      }}
+                      options={{
+                        diffStyle: diffRenderMode === "split" ? "split" : "unified",
+                        lineDiffType: "none",
+                        overflow: wordWrap ? "wrap" : "scroll",
+                        theme: resolveDiffThemeName(resolvedTheme),
+                        themeType: resolvedTheme as DiffThemeType,
+                        stickyHeaders: true,
+                        ...(loadDiffFiles ? { loadDiffFiles } : {}),
+                        expandUnchanged,
+                      }}
+                    />
+                    <DiffHunkScrollbarMarks marks={hunkScrollbarMarks} />
+                  </div>
+                </DiffFileTransition>
               ) : (
                 <div className="min-h-0 flex-1 overflow-auto p-2">
                   <div className="space-y-2">

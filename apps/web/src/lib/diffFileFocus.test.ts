@@ -264,6 +264,22 @@ describe("waitForFileDiffHydration", () => {
     await pending;
   });
 
+  it("stops scheduling hydration checks when a file switch is abandoned", async () => {
+    const scheduled: Array<() => void> = [];
+    let cancelled = false;
+    const pending = waitForFileDiffHydration(fileWithHunks([]), {
+      shouldHydrate: true,
+      timeoutMs: Number.MAX_SAFE_INTEGER,
+      isCancelled: () => cancelled,
+      schedule: (callback) => scheduled.push(callback),
+    });
+    expect(scheduled).toHaveLength(1);
+    cancelled = true;
+    scheduled[0]?.();
+    await pending;
+    expect(scheduled).toHaveLength(1);
+  });
+
   it("gives up after the timeout so a stuck patch still scrolls", async () => {
     const fileDiff = fileWithHunks([]);
     let now = 0;
@@ -282,6 +298,28 @@ describe("waitForFileDiffHydration", () => {
 });
 
 describe("revealFocusedDiffAfterHydration", () => {
+  it.each(["new", "deleted"] as const)(
+    "reveals a %s file after layout without waiting for hydration",
+    async (type) => {
+      const fileDiff = { ...fileWithHunks([]), type };
+      const events: string[] = [];
+      await revealFocusedDiffAfterHydration({
+        fileDiff,
+        needsHydration: true,
+        isCancelled: () => false,
+        wait: async () => {
+          throw new Error("Added and deleted files cannot hydrate");
+        },
+        afterLayout: async () => {
+          events.push("layout");
+        },
+        scroll: () => events.push("scroll"),
+      });
+      expect(events).toEqual(["layout", "scroll"]);
+      expect(fileDiff.isPartial).toBe(true);
+    },
+  );
+
   it("scrolls immediately when the file is already hydrated", async () => {
     const fileDiff = fileWithHunks([]);
     fileDiff.isPartial = false;

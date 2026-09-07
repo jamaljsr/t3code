@@ -80,6 +80,7 @@ export function waitForFileDiffHydration(
     schedule?: (callback: () => void) => void;
     now?: () => number;
     timeoutMs?: number;
+    isCancelled?: () => boolean;
   },
 ): Promise<void> {
   if (!options.shouldHydrate || !fileDiff.isPartial) {
@@ -93,7 +94,7 @@ export function waitForFileDiffHydration(
 
   return new Promise((resolve) => {
     const tick = () => {
-      if (!fileDiff.isPartial || now() - startedAt >= timeoutMs) {
+      if (options.isCancelled?.() || !fileDiff.isPartial || now() - startedAt >= timeoutMs) {
         resolve();
         return;
       }
@@ -114,7 +115,7 @@ export function afterNextLayout(schedule = requestAnimationFrame): Promise<void>
 }
 
 export async function revealFocusedDiffAfterHydration(options: {
-  fileDiff: Pick<FileDiffMetadata, "isPartial">;
+  fileDiff: Pick<FileDiffMetadata, "isPartial" | "type">;
   needsHydration: boolean;
   isCancelled: () => boolean;
   scroll: () => void;
@@ -124,15 +125,26 @@ export async function revealFocusedDiffAfterHydration(options: {
   const wait = options.wait ?? waitForFileDiffHydration;
   const afterLayout = options.afterLayout ?? afterNextLayout;
 
-  await wait(options.fileDiff, { shouldHydrate: options.needsHydration });
+  const canHydrate =
+    options.fileDiff.type === "change" ||
+    options.fileDiff.type === "rename-changed" ||
+    options.fileDiff.type === "rename-pure";
+
+  if (canHydrate) {
+    await wait(options.fileDiff, {
+      shouldHydrate: options.needsHydration,
+      isCancelled: options.isCancelled,
+    });
+  }
   if (options.isCancelled()) return;
   if (options.needsHydration) await afterLayout();
   if (!options.isCancelled()) options.scroll();
-  if (options.isCancelled() || !options.fileDiff.isPartial) return;
+  if (options.isCancelled() || !canHydrate || !options.fileDiff.isPartial) return;
 
   await wait(options.fileDiff, {
     shouldHydrate: true,
     timeoutMs: Number.MAX_SAFE_INTEGER,
+    isCancelled: options.isCancelled,
   });
   if (options.isCancelled()) return;
   await afterLayout();
