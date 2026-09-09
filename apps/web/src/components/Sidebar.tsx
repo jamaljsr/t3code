@@ -262,11 +262,7 @@ function WorkingDuration(props: { startedAt: string | null }) {
     return () => window.clearInterval(id);
   }, [startedMs]);
   if (Number.isNaN(startedMs)) return null;
-  return (
-    <span className="font-mono tabular-nums">
-      {formatWorkingDurationLabel(Date.now() - startedMs)}
-    </span>
-  );
+  return <span className="tabular-nums">{formatWorkingDurationLabel(Date.now() - startedMs)}</span>;
 }
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
@@ -548,7 +544,7 @@ function SidebarSectionPlaceholder(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className="relative mx-0.5 h-0"
+      className="relative mx-0.5 -mb-px h-0"
     >
       {props.showHint ? (
         <div
@@ -578,7 +574,7 @@ function SidebarDragBoundary(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className="pointer-events-none relative mx-0.5 h-0"
+      className="pointer-events-none relative mx-0.5 -mb-px h-0"
     >
       {props.visible ? (
         <div className="sidebar-drag-boundary-label absolute inset-x-2 top-1 flex h-4 items-center gap-2">
@@ -1449,9 +1445,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           // number from reflowing as PR states stream in.
           "shrink-0 text-xs tabular-nums hover:underline",
           variant === "slim" && variantAction === "unsettle"
-            ? props.isActive
-              ? "text-secondary-label"
-              : cn("text-secondary-label transition-colors", settledPrHoverClass)
+            ? cn("text-secondary-label transition-colors", settledPrHoverClass)
             : prStatus.colorClass,
         )}
         aria-label={prStatus.tooltip}
@@ -4370,7 +4364,7 @@ export default function Sidebar() {
                   <ul
                     ref={attachListMotionRef}
                     role="list"
-                    className="relative flex flex-col gap-px pt-2"
+                    className="relative flex flex-col gap-px"
                   >
                     {(() => {
                       const renderThreadRowInner = (
