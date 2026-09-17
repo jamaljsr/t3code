@@ -59,14 +59,7 @@ export function ProjectScopeTriggerContent({
   return (
     <>
       {scope.singleProject ? (
-        <ProjectFavicon
-          environmentId={scope.singleProject.environmentId}
-          cwd={scope.singleProject.workspaceRoot}
-          projectName={scope.singleProject.title}
-          projectIcon={scope.singleProject.projectIcon}
-          faviconPath={scope.singleProject.faviconPath}
-          className="size-4 shrink-0"
-        />
+        <ProjectFavicon project={scope.singleProject} className="size-4 shrink-0" />
       ) : (
         <FolderIcon className="size-4 shrink-0" />
       )}
@@ -128,14 +121,7 @@ export function ProjectScopeSelector({
               >
                 <CheckIcon className="size-3.5" />
               </Button>
-              <ProjectFavicon
-                environmentId={project.environmentId}
-                cwd={project.workspaceRoot}
-                projectName={project.title}
-                projectIcon={project.projectIcon}
-                faviconPath={project.faviconPath}
-                className="size-4 shrink-0"
-              />
+              <ProjectFavicon project={project} className="size-4 shrink-0" />
               <span className="min-w-0 flex-1 truncate">{project.displayName}</span>
               <Tooltip>
                 <TooltipTrigger

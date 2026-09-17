@@ -25,7 +25,7 @@ export function getValidReviewFileIds(
   if (valid.length === 0) {
     return getDefaultReviewExpandedFileIds(files);
   }
-  return [valid[0]];
+  return valid.slice(0, 1);
 }
 
 export function getValidExplicitReviewFileIds(

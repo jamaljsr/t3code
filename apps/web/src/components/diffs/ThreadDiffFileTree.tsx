@@ -11,9 +11,9 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const EMPTY_DIRECTORY_OVERRIDES: Record<string, boolean> = {};
 const FILE_STATUS_INDICATORS = {
-  added: { label: "Added", marker: "A", className: "text-success" },
+  added: { label: "Added", marker: "A", className: "text-diff-addition" },
   modified: { label: "Modified", marker: "M", className: "text-warning" },
-  deleted: { label: "Deleted", marker: "D", className: "text-destructive" },
+  deleted: { label: "Deleted", marker: "D", className: "text-diff-deletion" },
   renamed: { label: "Renamed", marker: "R", className: "text-info" },
 };
 

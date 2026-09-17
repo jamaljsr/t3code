@@ -65,6 +65,7 @@ const THREAD: OrchestrationThread = {
   runtimeMode: "full-access",
   interactionMode: "default",
   branch: "main",
+  pullRequests: [],
   worktreePath: null,
   latestTurn: null,
   createdAt: "2026-04-01T00:00:00.000Z",
@@ -180,6 +181,7 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
     remove: () => Effect.die("Unexpected environment removal"),
     removeRelayEnvironments: () => Effect.die("Unexpected environment removal"),
     retryNow: () => Effect.void,
+    setEnabled: () => Effect.die("Unexpected environment toggle"),
     state: () => SubscriptionRef.get(supervisor.state),
     stateChanges: () => SubscriptionRef.changes(supervisor.state),
     run: (_environmentId, effect) =>
@@ -508,10 +510,15 @@ describe("createEnvironmentThreadStateAtoms", () => {
               occurredAt: THREAD.createdAt,
               aggregateKind: "thread",
               aggregateId: THREAD_ID,
-              type: "thread.meta-updated",
+              type: "thread.message-sent",
               payload: {
                 threadId: THREAD_ID,
-                title: "Buffer drained",
+                messageId: MessageId.make("buffered-message"),
+                role: "assistant",
+                text: "Buffer drained",
+                turnId: null,
+                streaming: false,
+                createdAt: THREAD.createdAt,
                 updatedAt: THREAD.createdAt,
               },
             },
@@ -567,7 +574,9 @@ describe("createEnvironmentThreadStateAtoms", () => {
                   (
                     deleted
                       ? value.status === "deleted"
-                      : Option.getOrNull(value.data)?.title === "Buffer drained"
+                      : Option.getOrNull(value.data)?.messages.some(
+                          (message) => message.text === "Buffer drained",
+                        )
                   )
                     ? Deferred.succeed(drained, undefined)
                     : Effect.void,
@@ -588,7 +597,11 @@ describe("createEnvironmentThreadStateAtoms", () => {
             expect(final.error).toEqual(Option.none());
             return;
           }
-          expect(Option.getOrThrow(final.data).title).toBe("Buffer drained");
+          expect(
+            Option.getOrThrow(final.data).messages.some(
+              (message) => message.text === "Buffer drained",
+            ),
+          ).toBe(true);
           expect(final.error).toEqual(
             Option.some(kind === "domain" ? error.message : "Could not synchronize the thread."),
           );
@@ -615,6 +628,68 @@ describe("createEnvironmentThreadStateAtoms", () => {
       unmountStatus();
       yield* Deferred.await(first.closed);
       expect(h.counts().active).toBe(0);
+    }),
+  );
+
+  it.effect.each([1, 16, 500])("publishes each replay batch once (batch size: %i)", (batchSize) =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      const unmount = h.registry.mount(h.stateAtom);
+      const first = yield* Queue.take(h.subscriptions);
+      let updates = 0;
+      const stop = h.registry.subscribe(h.details.messagesAtom(h.ref), () => updates++, {
+        immediate: true,
+      });
+      updates = 0;
+      const events: OrchestrationThreadStreamItem[] = Array.from({ length: 500 }, (_, index) => ({
+        kind: "event",
+        event: {
+          type: "thread.message-sent",
+          sequence: 8 + index,
+          eventId: EventId.make(`replay-${index}`),
+          aggregateKind: "thread",
+          aggregateId: THREAD_ID,
+          occurredAt: THREAD.createdAt,
+          commandId: null,
+          causationEventId: null,
+          correlationId: null,
+          metadata: {},
+          payload: {
+            threadId: THREAD_ID,
+            messageId: MessageId.make("replayed-message"),
+            role: "assistant",
+            text: `${index},`,
+            turnId: null,
+            streaming: true,
+            createdAt: THREAD.createdAt,
+            updatedAt: THREAD.createdAt,
+          },
+        },
+      }));
+      for (let offset = 0; offset < events.length; offset += batchSize) {
+        yield* Queue.offerAll(first.events, events.slice(offset, offset + batchSize));
+        const last = Math.min(offset + batchSize, events.length) - 1;
+        yield* observeState(
+          h.registry,
+          h.stateAtom,
+          (state) => Option.getOrNull(state.data)?.messages[0]?.text.endsWith(`${last},`) === true,
+        );
+      }
+      yield* Queue.offerAll(first.events, [events[499]!, events[0]!]);
+      yield* Queue.offer(first.events, { kind: "synchronized" });
+      yield* observeState(h.registry, h.stateAtom, (state) => state.status === "live");
+      expect(currentThread(h.registry, h.stateAtom).messages[0]?.text).toBe(
+        Array.from({ length: 500 }, (_, index) => `${index},`).join(""),
+      );
+      expect(updates).toBe(Math.ceil(500 / batchSize));
+      stop();
+      unmount();
+      yield* Deferred.await(first.closed);
+      const remount = h.registry.mount(h.stateAtom);
+      const next = yield* Queue.take(h.subscriptions);
+      expect(next.afterSequence).toBe(507);
+      remount();
+      yield* Deferred.await(next.closed);
     }),
   );
 
