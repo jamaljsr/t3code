@@ -7,6 +7,13 @@ export const ReviewDiffPreviewInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   baseRef: Schema.optional(TrimmedNonEmptyString),
   ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
+  file: Schema.optionalKey(
+    Schema.Struct({
+      path: Schema.NonEmptyString,
+      previousPath: Schema.NullOr(Schema.NonEmptyString),
+      sourceKind: Schema.Literals(["working-tree", "branch-range"]),
+    }),
+  ),
 });
 export type ReviewDiffPreviewInput = typeof ReviewDiffPreviewInput.Type;
 
@@ -48,6 +55,14 @@ export const ReviewDiffFile = Schema.Struct({
 });
 export type ReviewDiffFile = typeof ReviewDiffFile.Type;
 
+export const ReviewDiffFileStat = Schema.Struct({
+  path: Schema.String,
+  previousPath: Schema.NullOr(Schema.String),
+  additions: Schema.Number,
+  deletions: Schema.Number,
+});
+export type ReviewDiffFileStat = typeof ReviewDiffFileStat.Type;
+
 export const ReviewDiffPreviewSource = Schema.Struct({
   id: TrimmedNonEmptyString,
   kind: ReviewDiffPreviewSourceKind,
@@ -55,7 +70,10 @@ export const ReviewDiffPreviewSource = Schema.Struct({
   baseRef: Schema.NullOr(TrimmedNonEmptyString),
   headRef: Schema.NullOr(TrimmedNonEmptyString),
   diff: Schema.String,
-  files: Schema.Array(ReviewDiffFile),
+  /** Complete statistics, independent of patch limits. Absent on older servers. */
+  files: Schema.optionalKey(Schema.Array(ReviewDiffFileStat)),
+  /** Change types and unknown counts for the personal desktop panel. Store clients ignore it. */
+  manifest: Schema.Array(ReviewDiffFile),
   diffHash: TrimmedNonEmptyString,
   truncated: Schema.Boolean,
   commits: Schema.optional(Schema.Array(ReviewDiffPreviewCommit)),

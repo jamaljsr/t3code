@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import { buildReviewDiffManifest } from "./reviewDiffManifest.ts";
 
+// Mirrors `git diff -z`, which terminates every field with NUL.
+const z = (...fields: string[]) => fields.map((field) => `${field}\0`).join("");
+
 describe("buildReviewDiffManifest", () => {
   it("merges name-status and numstat, including renames and binaries", () => {
     const files = buildReviewDiffManifest({
-      nameStatus: ["M\tsrc/a.ts", "R100\told.ts\tnew.ts", "A\tbin/photo.png"].join("\n"),
-      numstat: ["2\t1\tsrc/a.ts", "0\t0\told.ts => new.ts", "-\t-\tbin/photo.png"].join("\n"),
+      nameStatus: z("M", "src/a.ts", "R100", "old.ts", "new.ts", "A", "bin/photo.png"),
+      numstat: z("2\t1\tsrc/a.ts", "0\t0\t", "old.ts", "new.ts", "-\t-\tbin/photo.png"),
       untrackedPaths: [],
       listingTruncated: false,
     });
@@ -40,8 +43,8 @@ describe("buildReviewDiffManifest", () => {
 
   it("marks a score below 100 as rename-changed", () => {
     const files = buildReviewDiffManifest({
-      nameStatus: "R80\told.ts\tnew.ts",
-      numstat: "3\t1\told.ts => new.ts",
+      nameStatus: z("R80", "old.ts", "new.ts"),
+      numstat: z("3\t1\t", "old.ts", "new.ts"),
       untrackedPaths: [],
       listingTruncated: false,
     });
@@ -75,49 +78,17 @@ describe("buildReviewDiffManifest", () => {
 
   it("sets truncated when any listing was cut", () => {
     const files = buildReviewDiffManifest({
-      nameStatus: "M\ta.ts",
-      numstat: "1\t0\ta.ts",
+      nameStatus: z("M", "a.ts"),
+      numstat: z("1\t0\ta.ts"),
       untrackedPaths: [],
       listingTruncated: true,
     });
     expect(files.truncated).toBe(true);
   });
 
-  it("resolves same-directory braced numstat rename paths", () => {
-    const files = buildReviewDiffManifest({
-      nameStatus: "R100\tsrc/old.ts\tsrc/new.ts",
-      numstat: "0\t0\tsrc/{old.ts => new.ts}",
-      untrackedPaths: [],
-      listingTruncated: false,
-    });
-    expect(files.files[0]).toMatchObject({
-      path: "src/new.ts",
-      oldPath: "src/old.ts",
-      changeType: "rename-pure",
-      additions: 0,
-      deletions: 0,
-    });
-  });
-
-  it("resolves prefix/suffix braced numstat rename paths", () => {
-    const files = buildReviewDiffManifest({
-      nameStatus: "R80\tdir/foo/file.ts\tdir/bar/file.ts",
-      numstat: "3\t1\tdir/{foo => bar}/file.ts",
-      untrackedPaths: [],
-      listingTruncated: false,
-    });
-    expect(files.files[0]).toMatchObject({
-      path: "dir/bar/file.ts",
-      oldPath: "dir/foo/file.ts",
-      changeType: "rename-changed",
-      additions: 3,
-      deletions: 1,
-    });
-  });
-
   it("treats a missed numstat join as unknown stats, not a pure rename", () => {
     const files = buildReviewDiffManifest({
-      nameStatus: "R100\told.ts\tnew.ts",
+      nameStatus: z("R100", "old.ts", "new.ts"),
       numstat: "",
       untrackedPaths: [],
       listingTruncated: false,
@@ -131,35 +102,47 @@ describe("buildReviewDiffManifest", () => {
     });
   });
 
-  it("collapses empty-to braced numstat flatten renames", () => {
+  it("reads rename paths from separate fields in any directory layout", () => {
+    const renames = [
+      ["src/old.ts", "src/new.ts"],
+      ["dir/foo/file.ts", "dir/bar/file.ts"],
+      ["nested/old/file.ts", "nested/file.ts"],
+      ["src/file.ts", "src/new/file.ts"],
+    ] as const;
     const files = buildReviewDiffManifest({
-      nameStatus: "R100\tnested/old/file.ts\tnested/file.ts",
-      numstat: "0\t0\tnested/{old => }/file.ts",
+      nameStatus: z(...renames.flatMap(([oldPath, path]) => ["R90", oldPath, path])),
+      numstat: z(...renames.flatMap(([oldPath, path]) => ["3\t1\t", oldPath, path])),
       untrackedPaths: [],
       listingTruncated: false,
     });
-    expect(files.files[0]).toMatchObject({
-      path: "nested/file.ts",
-      oldPath: "nested/old/file.ts",
-      changeType: "rename-pure",
-      additions: 0,
-      deletions: 0,
-    });
+    expect(files.files.map((file) => [file.oldPath, file.path, file.additions])).toEqual(
+      renames
+        .map(([oldPath, path]) => [oldPath, path, 3])
+        .toSorted((a, b) => String(a[1]).localeCompare(String(b[1]))),
+    );
   });
 
-  it("resolves empty-from braced numstat directory insertions", () => {
+  it("keeps paths with spaces, tabs, and newlines exactly", () => {
+    const paths = [" leading.txt", "trailing.txt ", "tab\tand\nnewline.txt"];
     const files = buildReviewDiffManifest({
-      nameStatus: "R80\tsrc/file.ts\tsrc/new/file.ts",
-      numstat: "3\t1\tsrc/{ => new}/file.ts",
+      nameStatus: z(...paths.flatMap((path) => ["A", path])),
+      numstat: z(...paths.map((path) => `1\t0\t${path}`)),
       untrackedPaths: [],
       listingTruncated: false,
     });
-    expect(files.files[0]).toMatchObject({
-      path: "src/new/file.ts",
-      oldPath: "src/file.ts",
-      changeType: "rename-changed",
-      additions: 3,
-      deletions: 1,
+    expect(files.files.map((file) => [file.path, file.additions])).toEqual(
+      paths.map((path) => [path, 1]).toSorted((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    );
+  });
+
+  it("drops a record that an output limit cut off", () => {
+    const files = buildReviewDiffManifest({
+      nameStatus: `${z("M", "complete.ts")}M\0partial`,
+      numstat: `${z("1\t0\tcomplete.ts")}1\t0\tpart`,
+      untrackedPaths: [],
+      listingTruncated: true,
     });
+    expect(files.files.map((file) => [file.path, file.additions])).toEqual([["complete.ts", 1]]);
+    expect(files.truncated).toBe(true);
   });
 });

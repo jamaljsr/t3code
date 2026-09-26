@@ -21,6 +21,22 @@ const StoreV103ReviewDiffPreviewSource = Schema.Struct({
 });
 const decodeStoreV103 = Schema.decodeUnknownSync(StoreV103ReviewDiffPreviewSource);
 
+// The review source shape that App Store 1.3.0 decodes.
+const StoreV130ReviewDiffPreviewSource = Schema.Struct({
+  ...StoreV103ReviewDiffPreviewSource.fields,
+  files: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        path: Schema.String,
+        previousPath: Schema.NullOr(Schema.String),
+        additions: Schema.Number,
+        deletions: Schema.Number,
+      }),
+    ),
+  ),
+});
+const decodeStoreV130 = Schema.decodeUnknownSync(StoreV130ReviewDiffPreviewSource);
+
 const decodeSource = Schema.decodeUnknownSync(ReviewDiffPreviewSource);
 const decodePatchInput = Schema.decodeUnknownSync(ReviewDiffFilePatchInput);
 const decodePatchResult = Schema.decodeUnknownSync(ReviewDiffFilePatchResult);
@@ -31,7 +47,7 @@ const baseSource = {
   title: "Against main",
   baseRef: "main",
   headRef: "HEAD",
-  files: [],
+  manifest: [],
   diffHash: "abc",
   truncated: false,
 };
@@ -65,12 +81,12 @@ describe("ReviewDiffPreviewSource commits", () => {
     expect(parsed.commitsError).toBe(false);
   });
 
-  it("requires diff and keeps files on the same source", () => {
+  it("requires diff and keeps the manifest on the same source", () => {
     expect(() => decodeSource(baseSource)).toThrow();
     const parsed = decodeSource({
       ...baseSource,
       diff: "diff --git a/src/a.ts b/src/a.ts\n",
-      files: [
+      manifest: [
         {
           path: "src/a.ts",
           oldPath: null,
@@ -82,14 +98,14 @@ describe("ReviewDiffPreviewSource commits", () => {
       ],
     });
     expect(parsed.diff).toBe("diff --git a/src/a.ts b/src/a.ts\n");
-    expect(parsed.files[0]?.path).toBe("src/a.ts");
+    expect(parsed.manifest[0]?.path).toBe("src/a.ts");
   });
 
-  it("lets a 1.0.3-shaped decoder ignore files and commits", () => {
+  it("lets a 1.0.3-shaped decoder ignore the manifest and commits", () => {
     const parsed = decodeStoreV103({
       ...baseSource,
       diff: "diff --git a/src/a.ts b/src/a.ts\n",
-      files: [
+      manifest: [
         {
           path: "src/a.ts",
           oldPath: null,
@@ -104,7 +120,28 @@ describe("ReviewDiffPreviewSource commits", () => {
       commitsError: false,
     });
     expect(parsed.diff).toBe("diff --git a/src/a.ts b/src/a.ts\n");
-    expect(parsed).not.toHaveProperty("files");
+    expect(parsed).not.toHaveProperty("manifest");
+  });
+
+  it("gives a 1.3.0-shaped decoder numeric file statistics", () => {
+    const source = {
+      ...baseSource,
+      diff: "",
+      files: [{ path: "image.png", previousPath: null, additions: 0, deletions: 0 }],
+      manifest: [
+        {
+          path: "image.png",
+          oldPath: null,
+          changeType: "new",
+          additions: null,
+          deletions: null,
+          binary: true,
+        },
+      ],
+    };
+    expect(decodeSource(source).files?.[0]?.previousPath).toBeNull();
+    expect(decodeStoreV130(source).files?.[0]?.additions).toBe(0);
+    expect(() => decodeStoreV130({ ...source, files: source.manifest })).toThrow();
   });
 
   it("decodes a per-file patch request and result", () => {

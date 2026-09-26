@@ -8,12 +8,12 @@ import {
 } from "@t3tools/contracts";
 
 import {
+  applyReviewDiffMetadata,
   buildReviewParsedDiff,
   buildReviewSectionItems,
   getDefaultReviewSectionId,
   getReviewFilePreviewState,
   getReviewSectionIdForCheckpoint,
-  hydrateReviewRenderableFile,
   type ReviewRenderableFile,
 } from "./reviewModel";
 
@@ -62,14 +62,6 @@ describe("buildReviewSectionItems", () => {
         completedAt: "2026-04-02T00:00:00.000Z",
       }),
     ];
-    const gitFile = {
-      path: "a.ts",
-      oldPath: null,
-      changeType: "change" as const,
-      additions: 1,
-      deletions: 0,
-      binary: false,
-    };
     const gitSections: ReviewDiffPreviewSource[] = [
       {
         id: "working-tree",
@@ -77,8 +69,8 @@ describe("buildReviewSectionItems", () => {
         title: "Dirty worktree",
         baseRef: "HEAD",
         headRef: null,
-        diff: "",
-        files: [gitFile],
+        diff: "diff --git a/a.ts b/a.ts",
+        manifest: [],
         diffHash: "hash-dirty",
         truncated: false,
       },
@@ -88,8 +80,8 @@ describe("buildReviewSectionItems", () => {
         title: "Against main",
         baseRef: "main",
         headRef: "feature",
-        diff: "",
-        files: [gitFile],
+        diff: "diff --git a/a.ts b/a.ts",
+        manifest: [],
         diffHash: "hash-base",
         truncated: false,
       },
@@ -119,11 +111,6 @@ describe("buildReviewSectionItems", () => {
       isLoading: false,
       diff: expect.stringContaining("loaded.ts"),
     });
-    expect(items[3]).toMatchObject({
-      diff: null,
-      files: [gitFile],
-      truncated: false,
-    });
     expect(getDefaultReviewSectionId(items)).toBe("turn:2");
   });
 
@@ -143,8 +130,6 @@ describe("buildReviewSectionItems", () => {
         title: "Dirty worktree",
         subtitle: "Tracked, staged, and untracked worktree changes",
         diff: null,
-        files: [],
-        truncated: false,
         isLoading: true,
       }),
     ]);
@@ -153,6 +138,35 @@ describe("buildReviewSectionItems", () => {
 });
 
 describe("buildReviewParsedDiff", () => {
+  it.each([
+    ["a/example.ts", "a/example.ts"],
+    ["b/example.ts", "b/example.ts"],
+    ["a/before.ts", "b/after.ts"],
+  ])("preserves repository paths from %s to %s", (previousPath, path) => {
+    const parsed = buildReviewParsedDiff(
+      [
+        `diff --git a/${previousPath} b/${path}`,
+        ...(previousPath === path
+          ? []
+          : ["similarity index 50%", `rename from ${previousPath}`, `rename to ${path}`]),
+        `--- a/${previousPath}`,
+        `+++ b/${path}`,
+        "@@ -1 +1 @@",
+        "-before",
+        "+after",
+      ].join("\n"),
+      "repository-paths",
+    );
+    expect(parsed.kind).toBe("files");
+    if (parsed.kind !== "files") return;
+    expect(parsed.files[0]).toMatchObject({
+      path,
+      previousPath: previousPath === path ? null : previousPath,
+      additions: 1,
+      deletions: 1,
+    });
+  });
+
   it("builds renderable rows from a unified patch", () => {
     const parsed = buildReviewParsedDiff(
       [
@@ -290,76 +304,33 @@ describe("buildReviewParsedDiff", () => {
   });
 });
 
-describe("hydrateReviewRenderableFile", () => {
-  it("inserts leading and trailing context around a one-hunk change", () => {
-    const file = makeRenderableFile({
-      path: "example.ts",
-      changeType: "change",
-      additions: 1,
-      deletions: 1,
-      rows: [
-        {
-          kind: "hunk",
-          id: "hunk-1",
-          header: "@@ -3,1 +3,1 @@",
-          context: null,
-        },
-        {
-          kind: "line",
-          id: "line-del",
-          change: "delete",
-          oldLineNumber: 3,
-          newLineNumber: null,
-          content: "gamma",
-          additionTokenIndex: null,
-          deletionTokenIndex: 0,
-          comparison: { change: "add", tokenIndex: 0 },
-        },
-        {
-          kind: "line",
-          id: "line-add",
-          change: "add",
-          oldLineNumber: null,
-          newLineNumber: 3,
-          content: "GAMMA",
-          additionTokenIndex: 0,
-          deletionTokenIndex: null,
-          comparison: { change: "delete", tokenIndex: 0 },
-        },
+describe("applyReviewDiffMetadata", () => {
+  it("uses complete counts even when the preview contains only part of one file", () => {
+    const parsed = buildReviewParsedDiff(
+      [
+        "diff --git a/large.txt b/large.txt",
+        "--- a/large.txt",
+        "+++ b/large.txt",
+        "@@ -1 +1 @@",
+        "-before",
+        "+after",
+      ].join("\n"),
+      "partial",
+    );
+    const result = applyReviewDiffMetadata(parsed, {
+      truncated: true,
+      files: [
+        { path: "large.txt", previousPath: null, additions: 4000, deletions: 3000 },
+        { path: "unseen.txt", previousPath: null, additions: 100, deletions: 20 },
       ],
     });
-
-    const hydrated = hydrateReviewRenderableFile(
-      file,
-      "alpha\nbeta\ngamma\ndelta\n",
-      "alpha\nbeta\nGAMMA\ndelta\n",
-    );
-
-    expect(hydrated.rows).toEqual([
-      expect.objectContaining({
-        kind: "line",
-        change: "context",
-        oldLineNumber: 1,
-        newLineNumber: 1,
-        content: "alpha",
-      }),
-      expect.objectContaining({
-        kind: "line",
-        change: "context",
-        oldLineNumber: 2,
-        newLineNumber: 2,
-        content: "beta",
-      }),
-      expect.objectContaining({ kind: "hunk", header: "@@ -3,1 +3,1 @@" }),
-      expect.objectContaining({ kind: "line", change: "delete", content: "gamma" }),
-      expect.objectContaining({ kind: "line", change: "add", content: "GAMMA" }),
-      expect.objectContaining({
-        kind: "line",
-        change: "context",
-        oldLineNumber: 4,
-        newLineNumber: 4,
-        content: "delta",
-      }),
-    ]);
+    expect(result.kind).toBe("files");
+    if (result.kind !== "files") return;
+    expect(result.fileCount).toBe(2);
+    expect(result.additions).toBe(4100);
+    expect(result.deletions).toBe(3020);
+    expect(result.files[0]?.additions).toBe(4000);
+    expect(result.notice).toContain("Counts include all changes");
+    expect(applyReviewDiffMetadata(parsed, null)).toEqual(parsed);
   });
 });

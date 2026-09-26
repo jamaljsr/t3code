@@ -210,6 +210,7 @@ const LOADERS: ReadonlyArray<{
         ...input,
         threadId: THREAD.thread.id,
         window: { turnLimit: 20, beforeCursor: "older-page" },
+        reasoningMessages: true,
       }),
   },
 ];
@@ -255,6 +256,7 @@ describe("authenticated environment HTTP requests", () => {
       if (loader.name === "older thread history") {
         expect(url.searchParams.get("turnLimit")).toBe("20");
         expect(url.searchParams.get("beforeCursor")).toBe("older-page");
+        expect(url.searchParams.get("reasoningMessages")).toBe("true");
       }
       expect(PREPARED.httpAuthorization).toMatchObject({ accessToken: "expired-token" });
     }),

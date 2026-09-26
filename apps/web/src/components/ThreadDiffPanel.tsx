@@ -326,7 +326,6 @@ const DIFF_PANEL_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
 interface DiffPanelProps {
   mode?: DiffPanelMode;
   composerDraftTarget: ScopedThreadRef | DraftId;
-  initialGitScope: "branch" | "unstaged";
   workspaceMutationId: string | null;
 }
 
@@ -335,12 +334,10 @@ export { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
 export default function DiffPanel({
   mode = "inline",
   composerDraftTarget,
-  initialGitScope: initialGitScopeProp,
   workspaceMutationId,
 }: DiffPanelProps) {
   const { resolvedTheme } = useTheme();
   const settings = useClientSettings();
-  const [initialGitScope] = useState(initialGitScopeProp);
   const diffRenderMode = settings.diffLayout;
   const updateClientSettings = useUpdateClientSettings();
   const setDiffRenderMode = (diffLayout: "stacked" | "split") =>
@@ -406,7 +403,7 @@ export default function DiffPanel({
     serverConfig?.availableEditors ?? [],
   );
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
-  const getDiffFilePatch = useAtomCommand(reviewEnvironment.diffFilePatch);
+  const getDiffFilePatch = useAtomCommand(reviewEnvironment.getDiffFilePatch);
   const gitStatusQuery = useEnvironmentQuery(
     activeThread !== null && activeThread !== undefined && activeCwd != null
       ? vcsEnvironment.status({
@@ -416,11 +413,7 @@ export default function DiffPanel({
       : null,
   );
   const diffSelection = useDiffPanelStore((state) =>
-    selectThreadDiffPanelSelection(
-      state.byThreadKey,
-      routeThreadRef,
-      initialGitScope === "unstaged",
-    ),
+    selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
   );
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
@@ -475,7 +468,7 @@ export default function DiffPanel({
   const branchRangeSource = branchDiffPreview.data?.sources.find(
     (source) => source.kind === "branch-range",
   );
-  const showUncommitted = (workingTreeSource?.files.length ?? 0) > 0;
+  const showUncommitted = (workingTreeSource?.manifest.length ?? 0) > 0;
   const branchCommits = branchRangeSource?.commits ?? [];
   const selectedCommitOid = resolveSelectedCommitOid(
     diffSelection,
@@ -658,7 +651,7 @@ export default function DiffPanel({
     ? hasResolvedPatch && selectedPatch.trim().length === 0
     : !isLoadingSelectedPatch &&
       selectedPatchError == null &&
-      (selectedGitSource?.files.length ?? 0) === 0;
+      (selectedGitSource?.manifest.length ?? 0) === 0;
   const turnRenderablePatch = useMemo(
     () =>
       selectedTurn
@@ -681,7 +674,7 @@ export default function DiffPanel({
   }, [turnRenderablePatch]);
   const treeFiles = useMemo(() => {
     if (selectedTurnId === null) {
-      return toGitDiffTreeFiles(selectedGitSource?.files ?? []);
+      return toGitDiffTreeFiles(selectedGitSource?.manifest ?? []);
     }
     return toTurnDiffTreeFiles(
       renderableFiles.map((fileDiff) => ({
@@ -689,7 +682,7 @@ export default function DiffPanel({
         filePath: resolveFileDiffPath(fileDiff),
       })),
     );
-  }, [renderableFiles, selectedGitSource?.files, selectedTurnId]);
+  }, [renderableFiles, selectedGitSource?.manifest, selectedTurnId]);
   const treePaths = useMemo(() => treeFiles.map((file) => file.path), [treeFiles]);
   const selectedPath = resolveDiffPanelSelectedPath({
     paths: treePaths,
@@ -701,7 +694,7 @@ export default function DiffPanel({
   }
   const selectedGitFile =
     selectedTurnId === null && selectedGitSource && selectedPath
-      ? selectedGitSource.files.find((file) => file.path === selectedPath)
+      ? selectedGitSource.manifest.find((file) => file.path === selectedPath)
       : undefined;
   const showBinaryGitFile = selectedGitFile?.binary === true;
   const gitRenderablePatch = useMemo(() => {
@@ -1034,10 +1027,10 @@ export default function DiffPanel({
   );
   const diffLineStat = useMemo(() => {
     if (selectedTurnId === null) {
-      return sumManifestDiffStats(selectedGitSource?.files ?? []);
+      return sumManifestDiffStats(selectedGitSource?.manifest ?? []);
     }
     return getDiffLineStat(renderableFiles);
-  }, [renderableFiles, selectedGitSource?.files, selectedTurnId]);
+  }, [renderableFiles, selectedGitSource?.manifest, selectedTurnId]);
   const selectedDiffFileKey = focusedFile?.fileKey ?? null;
   const holdFileReveal = shouldHoldDiffFileReveal({
     selectedFileKey: selectedDiffFileKey,
@@ -1236,7 +1229,6 @@ export default function DiffPanel({
                     />
                     <ComboboxInput
                       className="[&_input]:h-6.5 [&_input]:ps-5 [&_input]:font-sans [&_input]:leading-6.5"
-                      inputClassName="rounded-none bg-transparent text-sm"
                       placeholder="Search refs..."
                       showTrigger={false}
                       size="sm"
@@ -1257,7 +1249,6 @@ export default function DiffPanel({
                 <ComboboxList className="max-h-64 min-w-0 overflow-x-hidden">
                   <ComboboxItem
                     className="h-8 w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)] py-0"
-                    contentClassName="w-full min-w-0 overflow-hidden"
                     value={AUTOMATIC_BASE_REF}
                   >
                     <span className="block min-w-0 truncate">Automatic</span>
@@ -1270,7 +1261,6 @@ export default function DiffPanel({
                       <ComboboxItem
                         key={choice.id}
                         className="h-8 w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)] py-0"
-                        contentClassName="w-full min-w-0 overflow-hidden"
                         value={item}
                       >
                         <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_2rem] items-center overflow-hidden">

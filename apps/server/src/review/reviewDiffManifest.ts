@@ -6,50 +6,37 @@ type NumstatEntry = {
   binary: boolean;
 };
 
-function splitNonEmptyLines(text: string): Array<string> {
-  const lines: Array<string> = [];
-  for (const line of text.split(/\r?\n/g)) {
-    if (line.trim().length === 0) continue;
-    lines.push(line);
-  }
-  return lines;
+// `-z` output ends every field with NUL, so a trailing unterminated field was cut off by an
+// output limit and is dropped.
+function splitNulFields(text: string): Array<string> {
+  const fields = text.split("\0");
+  fields.pop();
+  return fields;
 }
 
-function resolveNumstatNewPath(rawPath: string): string {
-  const braced = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(rawPath);
-  if (braced) {
-    const [, prefix = "", , to = "", suffix = ""] = braced;
-    const resolved =
-      to.length === 0 && prefix.endsWith("/") && suffix.startsWith("/")
-        ? `${prefix}${suffix.slice(1)}`
-        : `${prefix}${to}${suffix}`;
-    return resolved.length > 0 ? resolved : rawPath;
-  }
-  const arrow = rawPath.indexOf(" => ");
-  if (arrow < 0) return rawPath;
-  const to = rawPath.slice(arrow + " => ".length).trim();
-  return to.length > 0 ? to : rawPath;
-}
-
+// `git diff --numstat -z` writes `added\tdeleted\tpath`, or `added\tdeleted\t` followed by
+// the old and new paths as separate fields for a rename or copy.
 function parseNumstatEntries(numstat: string): Map<string, NumstatEntry> {
   const entries = new Map<string, NumstatEntry>();
-  for (const line of splitNonEmptyLines(numstat)) {
-    const [addedRaw, deletedRaw, ...pathParts] = line.split("\t");
-    const rawPath =
-      pathParts.length > 1 ? (pathParts.at(-1) ?? "").trim() : pathParts.join("\t").trim();
-    if (rawPath.length === 0) continue;
-    const path = resolveNumstatNewPath(rawPath);
+  const fields = splitNulFields(numstat);
+  for (let index = 0; index < fields.length; index++) {
+    const match = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(fields[index]!);
+    if (!match) continue;
+    const [, addedRaw, deletedRaw, inlinePath] = match;
+    let path = inlinePath!;
+    if (path.length === 0) {
+      index += 2;
+      path = fields[index] ?? "";
+    }
+    if (path.length === 0) continue;
 
     if (addedRaw === "-" && deletedRaw === "-") {
       entries.set(path, { additions: null, deletions: null, binary: true });
       continue;
     }
-
-    const added = Number.parseInt(addedRaw ?? "0", 10);
-    const deleted = Number.parseInt(deletedRaw ?? "0", 10);
     entries.set(path, {
-      additions: Number.isFinite(added) ? added : 0,
-      deletions: Number.isFinite(deleted) ? deleted : 0,
+      additions: Number(addedRaw),
+      deletions: Number(deletedRaw),
       binary: false,
     });
   }
@@ -79,7 +66,7 @@ function changeTypeForStatus(
   }
 }
 
-/** Merge git name-status, numstat, and untracked paths into a sorted review diff file list. */
+/** Merge `-z` git name-status, numstat, and untracked paths into a sorted review diff file list. */
 export function buildReviewDiffManifest(input: {
   readonly nameStatus: string;
   readonly numstat: string;
@@ -89,9 +76,10 @@ export function buildReviewDiffManifest(input: {
   const statsByPath = parseNumstatEntries(input.numstat);
   const filesByPath = new Map<string, ReviewDiffFile>();
 
-  for (const line of splitNonEmptyLines(input.nameStatus)) {
-    const columns = line.split("\t");
-    const statusField = columns[0] ?? "";
+  // `git diff --name-status -z` writes the status, then one path, or two for a rename or copy.
+  const nameStatusFields = splitNulFields(input.nameStatus);
+  for (let index = 0; index < nameStatusFields.length; index++) {
+    const statusField = nameStatusFields[index]!;
     if (statusField.length === 0) continue;
 
     const statusCode = statusField.charAt(0);
@@ -100,8 +88,8 @@ export function buildReviewDiffManifest(input: {
     const score = scoreRaw.length > 0 && Number.isFinite(parsedScore) ? parsedScore : null;
 
     const isTwoPath = statusCode === "R" || statusCode === "C";
-    const oldPathRaw = isTwoPath ? (columns[1] ?? "") : "";
-    const path = isTwoPath ? (columns[2] ?? "") : (columns[1] ?? "");
+    const oldPathRaw = isTwoPath ? (nameStatusFields[++index] ?? "") : "";
+    const path = nameStatusFields[++index] ?? "";
     if (path.length === 0) continue;
 
     const stats = statsByPath.get(path);

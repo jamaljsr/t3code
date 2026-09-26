@@ -24,11 +24,6 @@ function makeSection(index: number, diff: string | null = reviewDiff) {
     subtitle: null,
     isLoading: false,
     diff,
-    files: [],
-    truncated: false,
-    diffHash: null,
-    baseRef: null,
-    headRef: null,
   } satisfies ReviewModel.ReviewSectionItem;
 }
 

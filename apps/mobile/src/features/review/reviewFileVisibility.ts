@@ -1,47 +1,35 @@
 import { useCallback, useMemo } from "react";
 
 import { updateReviewExpandedFileIds, updateReviewViewedFileIds } from "./reviewState";
+import type { ReviewRenderableFile } from "./reviewModel";
 
-export interface ReviewFileVisibilityItem {
-  readonly id: string;
-}
-
-export function getDefaultReviewExpandedFileIds(
-  files: ReadonlyArray<{ readonly id: string }>,
+function getDefaultReviewExpandedFileIds(
+  files: ReadonlyArray<ReviewRenderableFile>,
 ): ReadonlyArray<string> {
-  return files[0] ? [files[0].id] : [];
+  return files.map((file) => file.id);
 }
 
 export function getValidReviewFileIds(
-  files: ReadonlyArray<{ readonly id: string }>,
+  files: ReadonlyArray<ReviewRenderableFile>,
   fileIds: ReadonlyArray<string> | undefined,
 ): ReadonlyArray<string> {
   if (fileIds === undefined) {
     return getDefaultReviewExpandedFileIds(files);
-  }
-
-  const fileIdSet = new Set(files.map((file) => file.id));
-  const valid = fileIds.filter((id) => fileIdSet.has(id));
-  if (valid.length === 0) {
-    return getDefaultReviewExpandedFileIds(files);
-  }
-  return valid.slice(0, 1);
-}
-
-export function getValidExplicitReviewFileIds(
-  files: ReadonlyArray<{ readonly id: string }>,
-  fileIds: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> {
-  if (fileIds === undefined) {
-    return [];
   }
 
   const fileIdSet = new Set(files.map((file) => file.id));
   return fileIds.filter((id) => fileIdSet.has(id));
 }
 
-export function selectReviewFileId(fileId: string): ReadonlyArray<string> {
-  return [fileId];
+export function getValidExplicitReviewFileIds(
+  files: ReadonlyArray<ReviewRenderableFile>,
+  fileIds: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> {
+  if (fileIds === undefined) {
+    return [];
+  }
+
+  return getValidReviewFileIds(files, fileIds);
 }
 
 export function toggleReviewFileId(
@@ -61,7 +49,7 @@ export function removeReviewFileId(
 export function useReviewFileVisibility(input: {
   readonly threadKey: string | null;
   readonly sectionId: string | null;
-  readonly files: ReadonlyArray<ReviewFileVisibilityItem>;
+  readonly files: ReadonlyArray<ReviewRenderableFile>;
   readonly cachedExpandedFileIds: ReadonlyArray<string> | undefined;
   readonly cachedViewedFileIds: ReadonlyArray<string> | undefined;
 }) {
@@ -91,7 +79,9 @@ export function useReviewFileVisibility(input: {
         return;
       }
 
-      updateReviewExpandedFileIds(threadKey, sectionId, () => selectReviewFileId(fileId));
+      updateReviewExpandedFileIds(threadKey, sectionId, (existing) =>
+        toggleReviewFileId(getValidReviewFileIds(files, existing), fileId),
+      );
     },
     [files, sectionId, threadKey],
   );
@@ -102,11 +92,18 @@ export function useReviewFileVisibility(input: {
         return;
       }
 
+      const shouldCollapse = !viewedFileIds.includes(fileId);
       updateReviewViewedFileIds(threadKey, sectionId, (existing) =>
         toggleReviewFileId(getValidExplicitReviewFileIds(files, existing), fileId),
       );
+
+      if (shouldCollapse) {
+        updateReviewExpandedFileIds(threadKey, sectionId, (existing) =>
+          removeReviewFileId(getValidReviewFileIds(files, existing), fileId),
+        );
+      }
     },
-    [files, sectionId, threadKey],
+    [files, sectionId, threadKey, viewedFileIds],
   );
 
   return {

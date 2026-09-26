@@ -10,11 +10,6 @@ function section(id: string, kind: ReviewSectionKind): ReviewSectionItem {
     title: id,
     subtitle: null,
     diff: null,
-    files: [],
-    truncated: false,
-    diffHash: null,
-    baseRef: null,
-    headRef: null,
     isLoading: false,
   };
 }

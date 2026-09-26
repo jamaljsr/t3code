@@ -89,7 +89,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
             return yield* failEnvironmentNotFound("thread_not_found");
           }
           return projectFileAttachmentsSnapshot(
-            projectThreadDetailSnapshot(snapshot.value),
+            projectThreadDetailSnapshot(snapshot.value, args.payload.reasoningMessages === "true"),
             args.headers["x-t3-file-attachments"] === "true",
           );
         }),

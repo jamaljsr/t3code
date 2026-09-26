@@ -8,17 +8,9 @@ export function resolveSelectedReviewFileId(input: {
   readonly sectionId: string | null;
   readonly availableFileIds: ReadonlyArray<string>;
 }): string | null {
-  if (input.availableFileIds.length === 0) {
+  if (input.selection.sectionId !== input.sectionId || input.selection.fileId === null) {
     return null;
   }
 
-  if (
-    input.selection.sectionId === input.sectionId &&
-    input.selection.fileId !== null &&
-    input.availableFileIds.includes(input.selection.fileId)
-  ) {
-    return input.selection.fileId;
-  }
-
-  return input.availableFileIds[0] ?? null;
+  return input.availableFileIds.includes(input.selection.fileId) ? input.selection.fileId : null;
 }
