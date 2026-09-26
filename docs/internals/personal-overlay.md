@@ -4,7 +4,7 @@
 
 ## What this fork is
 
-`personal` overlays pingdotgg/t3code. Desktop/server run from this checkout. Daily mobile is the App Store app (1.0.3 at the time this was written). `apps/mobile` in the repo is not that binary.
+`personal` overlays pingdotgg/t3code. This checkout builds the desktop binaries that are installed and run daily; the dev app runs from it only for testing. Daily mobile is the App Store app (1.3.0 at the time this was written). `apps/mobile` in the repo is not that binary, and its review screen follows upstream unchanged.
 
 `personal-compat` was the working branch that landed dual-serve + panel extract + these docs, then merged back into `personal`.
 
@@ -17,10 +17,13 @@ Forbidden: removing `ReviewDiffPreviewSource.diff` because desktop no longer rea
 Required shape for `review.getDiffPreview` sources:
 
 - `diff`: unified patch, 120 KB cap, same `[truncated]` marker as before the one-file work
-- `files`: manifest for the file-based desktop (and in-repo mobile) panel
+- `files`: upstream's statistics, `{ path, previousPath, additions, deletions }` with numeric counts. Store 1.3.0 requires this exact shape; a personal field under this key breaks its review screen.
+- `manifest`: the personal file list for the desktop panel, with change types and `null` counts for unknown or binary files. Store clients ignore it.
 - `truncated`: true if the patch **or** the file list hit a cap
 
-New RPCs (`getDiffFilePatch`) are fine; store 1.0.3 never calls them.
+Store 1.3.0 loads a truncated source one file at a time through `getDiffPreview` with a `file` input. The server answers with only that source, its patch, and a one-entry `files`.
+
+New RPCs (`getDiffFilePatch`, `getCommitDiffPreview`) are fine; store clients never call them.
 
 File attachments also need an opt-in. Store 1.0.3 accepts only image attachments;
 one video or PDF can prevent an entire thread from loading. Thread HTTP reads use
@@ -40,13 +43,13 @@ by the PR Code tab and can evolve independently.
 
 Completed folds should leave a maintenance note with the source refs, conflict resolutions,
 semantic repairs, and compatibility audit. See
-[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example, and [v0.0.42](personal-overlay-v0.0.42-merge.md) for the latest fold.
+[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example, and [v0.0.43-nightly](personal-overlay-v0.0.43-nightly-merge.md) for the latest fold.
 
 On the machine the phone pairs to (`~/.t3`):
 
 - Merge, do not rebase the whole fork.
-- Prefer upstream **release tags** that match or are an additive superset of the store app.
-- Do not run `main` HEAD as that server until the store protocol matches or you have checked every RPC 1.0.3 still calls.
+- Fold an upstream ref at least as new as the store app's protocol. Store builds can come from `main` ahead of any release tag, so check the RPC shapes rather than the version number.
+- Before running a fold as that server, check every RPC the store app calls against its schemas; `packages/contracts/src/review.test.ts` pins the review shapes for 1.0.3 and 1.3.0.
 - After a fold: `vp test run packages/contracts/src/review.test.ts` and `vp test run apps/server/src/vcs/GitVcsDriverCore.test.ts`; read auto-merged `GitVcsDriverCore.ts` and `packages/contracts` even without conflict markers; confirm working tree / branch on the phone.
 
 Playground folds of `main` belong in a worktree that does not use `~/.t3` and that the phone does not pair to.
