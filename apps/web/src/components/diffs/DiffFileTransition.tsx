@@ -10,7 +10,7 @@ function LoadingFileNotice({ path }: { path: string }) {
   return (
     <div
       role="status"
-      className="pointer-events-none absolute top-2 right-3 z-10 max-w-[80%] truncate rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground shadow-sm"
+      className="pointer-events-none absolute top-2 right-3 z-10 max-w-[80%] truncate rounded-md border border-border bg-background px-2 py-1 text-2xs text-muted-foreground shadow-sm"
     >
       Loading {path}…
     </div>

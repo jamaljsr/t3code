@@ -81,10 +81,7 @@ export function ProjectScopeSelector({
     <Menu open={open} onOpenChange={onOpenChange}>
       <MenuTrigger
         render={
-          <SidebarMenuButton
-            aria-label="Filter threads by project"
-            className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-          />
+          <SidebarMenuButton aria-label="Filter threads by project" className="min-w-0 flex-1" />
         }
       >
         <ProjectScopeTriggerContent scope={scope} />
@@ -107,9 +104,6 @@ export function ProjectScopeSelector({
                 variant="ghost-muted"
                 aria-label={`Toggle ${project.displayName}`}
                 aria-pressed={selected}
-                className={
-                  selected ? "[--control-icon-color:currentColor] text-foreground" : "opacity-30"
-                }
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.preventDefault();
@@ -119,7 +113,9 @@ export function ProjectScopeSelector({
                   );
                 }}
               >
-                <CheckIcon className="size-3.5" />
+                <CheckIcon
+                  className={selected ? "size-3.5 text-foreground" : "size-3.5 opacity-30"}
+                />
               </Button>
               <ProjectFavicon project={project} className="size-4 shrink-0" />
               <span className="min-w-0 flex-1 truncate">{project.displayName}</span>

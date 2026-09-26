@@ -35,7 +35,7 @@ export function DiffHunkNav({ hunkIndex, hunkCount, onPrevious, onNext }: DiffHu
         <ChevronUpIcon className="size-3.5" />
       </button>
       <span
-        className="px-0.5 text-center text-[11px] tabular-nums text-muted-foreground whitespace-nowrap"
+        className="px-0.5 text-center text-2xs tabular-nums text-muted-foreground whitespace-nowrap"
         aria-label={`Hunk ${label}`}
       >
         {label}

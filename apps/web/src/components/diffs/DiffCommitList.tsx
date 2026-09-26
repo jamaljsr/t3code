@@ -63,14 +63,14 @@ export function DiffCommitList(props: {
   return (
     <div className="flex min-h-0 flex-col">
       {commitsError ? (
-        <p className="px-3 py-1.5 text-[11px] text-muted-foreground">Couldn’t load commits</p>
+        <p className="px-3 py-1.5 text-2xs text-muted-foreground">Couldn’t load commits</p>
       ) : null}
       {showUncommitted ? (
         <button
           type="button"
           aria-current={workingTreeSelected ? "true" : undefined}
           className={cn(
-            "flex w-full items-center rounded-xl px-3 py-1 text-left text-[11px] transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "flex w-full items-center rounded-xl px-3 py-1 text-left text-2xs transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             workingTreeSelected && "bg-accent/60",
           )}
           onClick={onSelectUncommitted}
@@ -82,7 +82,7 @@ export function DiffCommitList(props: {
         type="button"
         aria-current={!workingTreeSelected && selectedCommitOid === null ? "true" : undefined}
         className={cn(
-          "flex w-full items-center rounded-xl px-3 py-1 text-left text-[11px] transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "flex w-full items-center rounded-xl px-3 py-1 text-left text-2xs transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           !workingTreeSelected && selectedCommitOid === null && "bg-accent/60",
         )}
         onClick={onSelectAllChanges}
@@ -127,14 +127,14 @@ export function DiffCommitList(props: {
               >
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
-                    <span className="min-w-0 truncate text-[11px] text-foreground/90">
+                    <span className="min-w-0 truncate text-2xs text-foreground/90">
                       {commit.subject}
                     </span>
-                    <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+                    <span className="ml-auto shrink-0 font-mono text-3xs text-muted-foreground">
                       {commit.oid.slice(0, 7)}
                     </span>
                   </span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
+                  <span className="block truncate text-3xs text-muted-foreground">
                     {commit.authorName} ·{" "}
                     {formatShortTimestamp(commit.committedAt, timestampFormat)}
                   </span>
@@ -144,7 +144,7 @@ export function DiffCommitList(props: {
             {isExpanded && body.length > 0 ? (
               <p
                 data-commit-body
-                className="whitespace-pre-wrap px-8 pb-2 text-[11px] text-muted-foreground"
+                className="whitespace-pre-wrap px-8 pb-2 text-2xs text-muted-foreground"
               >
                 {body}
               </p>
@@ -153,7 +153,7 @@ export function DiffCommitList(props: {
         );
       })}
       {commitsTruncated ? (
-        <p className="px-3 py-1.5 text-[10px] text-muted-foreground">Showing latest 100 commits</p>
+        <p className="px-3 py-1.5 text-3xs text-muted-foreground">Showing latest 100 commits</p>
       ) : null}
     </div>
   );

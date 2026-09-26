@@ -95,11 +95,11 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
             ) : (
               <FolderClosedIcon className="size-3.5 shrink-0 text-muted-foreground/75" />
             )}
-            <span className="truncate font-mono text-[11px] text-muted-foreground/90 group-hover:text-foreground/90">
+            <span className="truncate font-mono text-2xs text-muted-foreground/90 group-hover:text-foreground/90">
               {node.name}
             </span>
             {hasNonZeroStat(node.stat) && (
-              <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums">
+              <span className="ml-auto shrink-0 font-mono text-3xs tabular-nums">
                 <DiffStatLabel additions={node.stat.additions} deletions={node.stat.deletions} />
               </span>
             )}
@@ -134,7 +134,7 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
           <span aria-hidden="true" className="size-3.5 shrink-0" />
         ) : null}
         {loading ? (
-          <Spinner className="size-3.5 shrink-0 text-muted-foreground/70" />
+          <Spinner size="sm" tone="muted" className="shrink-0" />
         ) : (
           <PierreEntryIcon
             pathValue={node.path}
@@ -143,10 +143,10 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
             className="size-3.5 text-muted-foreground/70"
           />
         )}
-        <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90">
+        <span className="truncate font-mono text-2xs text-muted-foreground/80 group-hover:text-foreground/90">
           {node.name}
         </span>
-        <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums">
+        <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-3xs tabular-nums">
           {status ? (
             <Tooltip>
               <TooltipTrigger render={<span />} tabIndex={-1} className="w-[1ch] text-center">
@@ -172,7 +172,7 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
     <div className="space-y-0.5">
       {treeNodes.map((node) => renderTreeNode(node, 0))}
       {truncated ? (
-        <p className="px-3 py-1.5 text-[10px] text-muted-foreground">File list truncated</p>
+        <p className="px-3 py-1.5 text-3xs text-muted-foreground">File list truncated</p>
       ) : null}
     </div>
   );

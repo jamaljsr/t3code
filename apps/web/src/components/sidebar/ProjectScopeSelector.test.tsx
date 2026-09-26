@@ -1,3 +1,4 @@
+import { isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
@@ -55,7 +56,10 @@ vi.mock("../ui/button", () => ({
       const projectName = label.slice("Toggle ".length);
       menuInteractions.toggle.set(projectName, {
         ...props,
-        muted: props.className?.includes("opacity-30") ?? false,
+        // The muted state lives on the check icon, which is the button's only child.
+        muted:
+          isValidElement<{ className?: string }>(children) &&
+          (children.props.className?.includes("opacity-30") ?? false),
         pressed: props["aria-pressed"] ?? false,
         activate: () => {
           let propagationStopped = false;

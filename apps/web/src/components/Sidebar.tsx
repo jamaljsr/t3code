@@ -209,8 +209,13 @@ import {
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button, InlineButton } from "./ui/button";
-import { Input } from "./ui/input";
-import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
+import {
+  SidebarContent,
+  SidebarGroup,
+  SidebarInput,
+  SidebarMenuButton,
+  useSidebar,
+} from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -4305,130 +4310,131 @@ export default function Sidebar() {
         fixedHeader={
           // Lifted above the stage backdrop, whose fade bleeds below the
           // header and would otherwise paint across the search row's outline.
-          <SidebarGroup className="relative z-[1] gap-1 p-[var(--sidebar-content-inset)]">
-            <div className="flex items-center gap-1">
-              <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
-                <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
-                <Input
-                  ref={threadSearchInputRef}
-                  nativeInput
-                  unstyled
-                  type="search"
-                  value={threadSearchQuery}
-                  onChange={(event) => {
-                    setThreadSearchQuery(event.currentTarget.value);
-                    setActiveSearchResultIndex(0);
-                  }}
-                  onKeyDown={handleThreadSearchKeyDown}
-                  placeholder="Search"
-                  aria-label="Search threads"
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded={isSearchingThreads && threadSearchResults.length > 0}
-                  aria-controls={
-                    isSearchingThreads && threadSearchResults.length > 0
-                      ? "sidebar-thread-search-results"
-                      : undefined
-                  }
-                  aria-activedescendant={
-                    isSearchingThreads && threadSearchResults[activeSearchResultIndex]
-                      ? `sidebar-thread-search-result-${activeSearchResultIndex}`
-                      : undefined
-                  }
-                  className="min-w-0 flex-1 [&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground"
-                />
-                {isSearchingThreads ? (
-                  <Button
-                    type="button"
-                    size="icon-micro"
-                    variant="ghost"
-                    className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
-                    aria-label="Clear thread search"
-                    onClick={() => {
-                      clearThreadSearch();
-                      threadSearchInputRef.current?.focus();
-                    }}
-                  >
-                    <XIcon className="size-3" />
-                  </Button>
-                ) : null}
-              </div>
-              <div className="shrink-0">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <SidebarMenuButton
-                        size="icon"
-                        type="button"
-                        className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                        onClick={handleNewThreadClick}
-                        disabled={projects.length === 0}
-                        aria-label="New thread"
-                      />
-                    }
-                  >
-                    <SquarePenIcon />
-                    <span
-                      className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                      aria-hidden="true"
-                    />
-                  </TooltipTrigger>
-                  <TooltipPopup side="right">
-                    {projectGroups.length > 1 ? (
-                      <span className="flex flex-col gap-0.5">
-                        <span>
-                          {newThreadShortcutLabel
-                            ? `New thread (${newThreadShortcutLabel})`
-                            : "New thread"}
-                        </span>
-                        <span className="text-muted-foreground">
-                          New thread in current project: Shift+click
-                          {newThreadInProjectShortcutLabel
-                            ? ` (${newThreadInProjectShortcutLabel})`
-                            : ""}
-                        </span>
-                      </span>
-                    ) : newThreadShortcutLabel ? (
-                      `New thread (${newThreadShortcutLabel})`
-                    ) : (
-                      "New thread"
-                    )}
-                  </TooltipPopup>
-                </Tooltip>
-              </div>
-            </div>
-            {projectGroups.length > 0 ? (
+          <SidebarGroup className="relative z-[1]">
+            <div className="flex flex-col gap-1">
               <div className="flex items-center gap-1">
-                <ProjectScopeSelector
-                  projects={projectGroups}
-                  scope={projectScope}
-                  open={projectScopeMenuOpen}
-                  onOpenChange={setProjectScopeMenuOpen}
-                  onSelectionChange={setProjectScopeSelection}
-                  onProjectSettings={handleProjectSettings}
-                />
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <SidebarMenuButton
-                        size="icon"
-                        className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                        onClick={openAddProjectCommandPalette}
-                        type="button"
-                        aria-label="New project"
-                      />
+                <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
+                  <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
+                  <SidebarInput
+                    ref={threadSearchInputRef}
+                    nativeInput
+                    type="search"
+                    value={threadSearchQuery}
+                    onChange={(event) => {
+                      setThreadSearchQuery(event.currentTarget.value);
+                      setActiveSearchResultIndex(0);
+                    }}
+                    onKeyDown={handleThreadSearchKeyDown}
+                    placeholder="Search"
+                    aria-label="Search threads"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={isSearchingThreads && threadSearchResults.length > 0}
+                    aria-controls={
+                      isSearchingThreads && threadSearchResults.length > 0
+                        ? "sidebar-thread-search-results"
+                        : undefined
                     }
-                  >
-                    <FolderPlusIcon />
-                    <span
-                      className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                      aria-hidden="true"
-                    />
-                  </TooltipTrigger>
-                  <TooltipPopup side="right">New project</TooltipPopup>
-                </Tooltip>
+                    aria-activedescendant={
+                      isSearchingThreads && threadSearchResults[activeSearchResultIndex]
+                        ? `sidebar-thread-search-result-${activeSearchResultIndex}`
+                        : undefined
+                    }
+                    className="min-w-0 flex-1"
+                  />
+                  {isSearchingThreads ? (
+                    <Button
+                      type="button"
+                      size="icon-micro"
+                      variant="ghost-muted"
+                      className="shrink-0"
+                      aria-label="Clear thread search"
+                      onClick={() => {
+                        clearThreadSearch();
+                        threadSearchInputRef.current?.focus();
+                      }}
+                    >
+                      <XIcon className="size-3" />
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="shrink-0">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <SidebarMenuButton
+                          size="icon"
+                          type="button"
+                          className="relative"
+                          onClick={handleNewThreadClick}
+                          disabled={projects.length === 0}
+                          aria-label="New thread"
+                        />
+                      }
+                    >
+                      <SquarePenIcon />
+                      <span
+                        className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+                        aria-hidden="true"
+                      />
+                    </TooltipTrigger>
+                    <TooltipPopup side="right">
+                      {projectGroups.length > 1 ? (
+                        <span className="flex flex-col gap-0.5">
+                          <span>
+                            {newThreadShortcutLabel
+                              ? `New thread (${newThreadShortcutLabel})`
+                              : "New thread"}
+                          </span>
+                          <span className="text-muted-foreground">
+                            New thread in current project: Shift+click
+                            {newThreadInProjectShortcutLabel
+                              ? ` (${newThreadInProjectShortcutLabel})`
+                              : ""}
+                          </span>
+                        </span>
+                      ) : newThreadShortcutLabel ? (
+                        `New thread (${newThreadShortcutLabel})`
+                      ) : (
+                        "New thread"
+                      )}
+                    </TooltipPopup>
+                  </Tooltip>
+                </div>
               </div>
-            ) : null}
+              {projectGroups.length > 0 ? (
+                <div className="flex items-center gap-1">
+                  <ProjectScopeSelector
+                    projects={projectGroups}
+                    scope={projectScope}
+                    open={projectScopeMenuOpen}
+                    onOpenChange={setProjectScopeMenuOpen}
+                    onSelectionChange={setProjectScopeSelection}
+                    onProjectSettings={handleProjectSettings}
+                  />
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <SidebarMenuButton
+                          size="icon"
+                          className="relative shrink-0"
+                          onClick={openAddProjectCommandPalette}
+                          type="button"
+                          aria-label="New project"
+                        />
+                      }
+                    >
+                      <FolderPlusIcon />
+                      <span
+                        className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+                        aria-hidden="true"
+                      />
+                    </TooltipTrigger>
+                    <TooltipPopup side="right">New project</TooltipPopup>
+                  </Tooltip>
+                </div>
+              ) : null}
+            </div>
           </SidebarGroup>
         }
       >
