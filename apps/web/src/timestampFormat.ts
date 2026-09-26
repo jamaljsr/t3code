@@ -159,17 +159,22 @@ const numericDateWithYearFormatter = new Intl.DateTimeFormat(timestampLocale, {
   day: "numeric",
   year: "numeric",
 });
+const monthDateFormatter = new Intl.DateTimeFormat(timestampLocale, {
+  month: "short",
+  day: "numeric",
+});
+const monthDateWithYearFormatter = new Intl.DateTimeFormat(timestampLocale, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
 
-/**
- * Chat timestamp that adds the date once the message is no longer from today:
- * today `12:34 PM`, yesterday `yesterday at 12:34 PM`, older `8/13 12:34 PM`
- * (locale digit order), with the year included once the calendar year differs.
- * Boundaries are local calendar days, not 24-hour windows.
- */
-export function formatDayAwareTimestamp(
+function formatPastDayAware(
   isoDate: string,
   timestampFormat: TimestampFormat,
-  nowMs: number = Date.now(),
+  nowMs: number,
+  sameYearDateFormatter: Intl.DateTimeFormat,
+  otherYearDateFormatter: Intl.DateTimeFormat,
 ): string {
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
@@ -184,8 +189,46 @@ export function formatDayAwareTimestamp(
   if (dayDiff <= 0) return time;
   if (dayDiff === 1) return `yesterday at ${time}`;
   const dateFormatter =
-    date.getFullYear() === now.getFullYear() ? numericDateFormatter : numericDateWithYearFormatter;
+    date.getFullYear() === now.getFullYear() ? sameYearDateFormatter : otherYearDateFormatter;
   return `${dateFormatter.format(date)} ${time}`;
+}
+
+/**
+ * Chat timestamp that adds the date once the message is no longer from today:
+ * today `12:34 PM`, yesterday `yesterday at 12:34 PM`, older `8/13 12:34 PM`
+ * (locale digit order), with the year included once the calendar year differs.
+ * Boundaries are local calendar days, not 24-hour windows.
+ */
+export function formatDayAwareTimestamp(
+  isoDate: string,
+  timestampFormat: TimestampFormat,
+  nowMs: number = Date.now(),
+): string {
+  return formatPastDayAware(
+    isoDate,
+    timestampFormat,
+    nowMs,
+    numericDateFormatter,
+    numericDateWithYearFormatter,
+  );
+}
+
+/**
+ * {@link formatDayAwareTimestamp} with a short month name for older dates, e.g.
+ * `Sep 24 8:53 AM` (locale month name and order).
+ */
+export function formatDayAwareMonthTimestamp(
+  isoDate: string,
+  timestampFormat: TimestampFormat,
+  nowMs: number = Date.now(),
+): string {
+  return formatPastDayAware(
+    isoDate,
+    timestampFormat,
+    nowMs,
+    monthDateFormatter,
+    monthDateWithYearFormatter,
+  );
 }
 
 /**

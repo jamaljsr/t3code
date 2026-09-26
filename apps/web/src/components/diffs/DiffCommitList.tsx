@@ -3,7 +3,7 @@ import { ChevronRightIcon } from "lucide-react";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 
 import { cn } from "~/lib/utils";
-import { formatShortTimestamp } from "../../timestampFormat";
+import { formatDayAwareMonthTimestamp } from "../../timestampFormat";
 import { shouldShowDiffCommitPane, toggleExpandedCommitOid } from "../../lib/diffCommitList";
 
 export interface DiffCommitListCommit {
@@ -136,7 +136,7 @@ export function DiffCommitList(props: {
                   </span>
                   <span className="block truncate text-3xs text-muted-foreground">
                     {commit.authorName} ·{" "}
-                    {formatShortTimestamp(commit.committedAt, timestampFormat)}
+                    {formatDayAwareMonthTimestamp(commit.committedAt, timestampFormat)}
                   </span>
                 </span>
               </button>
