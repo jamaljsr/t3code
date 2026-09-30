@@ -43,7 +43,7 @@ by the PR Code tab and can evolve independently.
 
 Completed folds should leave a maintenance note with the source refs, conflict resolutions,
 semantic repairs, and compatibility audit. See
-[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example, and [v0.0.43-nightly](personal-overlay-v0.0.43-nightly-merge.md) for the latest fold.
+[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example, and [v0.0.44](personal-overlay-v0.0.44-merge.md) for the latest fold.
 
 On the machine the phone pairs to (`~/.t3`):
 
