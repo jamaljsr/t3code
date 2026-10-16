@@ -19,6 +19,7 @@ import {
 } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
@@ -50,6 +51,7 @@ export const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const settings = yield* ServerSettings.ServerSettingsService;
   const projectStore = yield* ProjectStore.ProjectStoreV2;
+  const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
 
   const canonicalizePath = (value: string) => {
     const resolvedPath = path.resolve(value);
@@ -116,6 +118,18 @@ export const make = Effect.gen(function* () {
       const root = yield* canonicalizePath(project.workspaceRoot).pipe(
         Effect.orElseSucceed(() => null),
       );
+      if (root !== null && isWithinRoot(candidate, root)) {
+        return;
+      }
+    }
+
+    // A thread's worktree can live outside every managed directory, for example one
+    // created by another tool. Unreadable or unresolvable worktrees grant nothing.
+    const worktrees = yield* projectionStore
+      .getThreadWorktreePaths()
+      .pipe(Effect.orElseSucceed(() => []));
+    for (const { worktreePath } of worktrees) {
+      const root = yield* canonicalizePath(worktreePath).pipe(Effect.orElseSucceed(() => null));
       if (root !== null && isWithinRoot(candidate, root)) {
         return;
       }

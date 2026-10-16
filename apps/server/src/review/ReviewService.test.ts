@@ -4,9 +4,10 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
-import { ProjectId } from "@t3tools/contracts";
+import { ProjectId, ThreadId } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -20,9 +21,24 @@ function layer(input: {
   readonly worktreesDirectory?: string;
   readonly previousWorktreesDirectories?: ReadonlyArray<string>;
   readonly projectRoots?: ReadonlyArray<string> | "unavailable";
+  readonly threadWorktrees?: ReadonlyArray<string> | "unavailable";
 }) {
   const projectRoots = input.projectRoots ?? [];
+  const threadWorktrees = input.threadWorktrees ?? [];
   return ReviewService.layer.pipe(
+    Layer.provide(
+      Layer.mock(ProjectionStore.ProjectionStoreV2)({
+        getThreadWorktreePaths: () =>
+          threadWorktrees === "unavailable"
+            ? Effect.fail(new ProjectionStore.ProjectionStoreSetupError({ cause: "offline" }))
+            : Effect.succeed(
+                threadWorktrees.map((worktreePath, index) => ({
+                  threadId: ThreadId.make(`thread-${index}`),
+                  worktreePath,
+                })),
+              ),
+      }),
+    ),
     Layer.provide(
       Layer.mock(ProjectStore.ProjectStoreV2)({
         listShells: () =>
@@ -185,6 +201,33 @@ describe("ReviewService", () => {
         [projectRoot, "unavailable"],
       ] as const) {
         const error = yield* review(cwd, projectRoots).pipe(Effect.flip);
+        assert.strictEqual(error._tag, "VcsRepositoryDetectionError");
+      }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("allows thread worktrees outside the managed worktree directories", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-review-workspace-" });
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-review-base-" });
+      // Stands in for a worktree another tool created outside T3's worktree directories.
+      const worktree = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-review-external-worktree-",
+      });
+      const worktreeChild = `${worktree}/packages/app`;
+      yield* fs.makeDirectory(worktreeChild, { recursive: true });
+
+      const review = (cwd: string, threadWorktrees: ReadonlyArray<string> | "unavailable") =>
+        Effect.gen(function* () {
+          const service = yield* ReviewService.ReviewService;
+          return yield* service.getDiffPreview({ cwd });
+        }).pipe(Effect.provide(layer({ workspaceRoot, baseDir, threadWorktrees })));
+
+      assert.strictEqual((yield* review(worktree, [worktree])).cwd, worktree);
+      assert.strictEqual((yield* review(worktreeChild, [worktree])).cwd, worktreeChild);
+      for (const threadWorktrees of [[], "unavailable"] as const) {
+        const error = yield* review(worktree, threadWorktrees).pipe(Effect.flip);
         assert.strictEqual(error._tag, "VcsRepositoryDetectionError");
       }
     }).pipe(Effect.provide(NodeServices.layer)),
