@@ -2292,7 +2292,9 @@ layer("GitHubPullRequestApi.layer", (it) => {
       }),
   );
 
-  it.effect("preserves the actual source fork name in provider detail", () =>
+  // Personal fork: skipped while "delete-branch" is held back for store clients.
+  // See "Held back for store clients" in docs/internals/personal-overlay.md.
+  it.effect.skip("preserves the actual source fork name in provider detail", () =>
     Effect.gen(function* () {
       const answer = coreResponse({
         state: "MERGED",

@@ -64,7 +64,9 @@ it.effect("maps credential verification failures without relabeling operation fa
   }),
 );
 
-it.effect("advertises standalone branch deletion for source repository writers", () =>
+// Personal fork: skipped while "delete-branch" is held back for store clients.
+// See "Held back for store clients" in docs/internals/personal-overlay.md.
+it.effect.skip("advertises standalone branch deletion for source repository writers", () =>
   Effect.gen(function* () {
     let action: string | undefined;
     const provider = yield* make.pipe(
@@ -257,7 +259,9 @@ it.effect("reports a failed stack read against its own operation", () =>
 );
 
 describe("gitHubViewerPermissions", () => {
-  it("offers everything to a viewer who can write to the repository", () => {
+  // Personal fork: skipped while "delete-branch" is held back for store clients.
+  // See "Held back for store clients" in docs/internals/personal-overlay.md.
+  it.skip("offers everything to a viewer who can write to the repository", () => {
     expect(
       gitHubViewerPermissions({
         canWrite: true,

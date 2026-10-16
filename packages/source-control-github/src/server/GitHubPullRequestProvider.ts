@@ -66,7 +66,8 @@ export function gitHubViewerPermissions(access: GitHubViewerAccess): PullRequest
   return {
     ...(access.canWrite ? { stackRebase: true } : {}),
     actions: [
-      ...(access.canDeleteBranch === true ? (["delete-branch"] as const) : []),
+      // Personal fork: "delete-branch" is held back until the App Store mobile app can decode it.
+      // See "Held back for store clients" in docs/internals/personal-overlay.md.
       // Arming a merge and taking the arming back are the merge, deferred: whoever may not
       // merge here may not leave an instruction to merge later either.
       ...(access.canWrite
