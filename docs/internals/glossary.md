@@ -46,8 +46,8 @@ Terms whose meaning matters across T3 Code. Architecture and lifecycle constrain
 
 ## Personal review overlay
 
-`review.getDiffPreview` returns both a file manifest for the personal one-file panel and a
-bounded unified `diff` for older mobile clients. `review.getDiffFilePatch` fetches the selected
+`review.getDiffPreview` returns both a file manifest for the personal one-file panel and the
+bounded unified `diff` that store mobile clients read. `review.getDiffFilePatch` fetches the selected
 file patch; `review.getDiffFileContents` supplies unchanged lines. Turn diffs still use checkpoint
 patches. See [personal overlay](./personal-overlay.md) for compatibility requirements.
 

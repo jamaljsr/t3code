@@ -244,7 +244,8 @@ and their marks follow the same rules as on web and desktop.
 
 ## Review diffs in a thread
 
-The thread diff panel shows one file at a time. Use the file tree to switch files; hiding the
+The thread diff panel shows one file at a time and opens on uncommitted changes. The branch
+review shows what is committed on the branch. Use the file tree to switch files; hiding the
 tree keeps the current file open. Working-tree and branch reviews include unchanged lines,
 while turn diffs show changed hunks. Use the hunk controls or scrollbar marks to move between
 changes. The resizable tree shows file and folder change counts, with branch commit details below.
