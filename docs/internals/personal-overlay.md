@@ -23,6 +23,15 @@ Store clients load a truncated source one file at a time through `getDiffPreview
 
 New RPCs (`getDiffFilePatch`, `getCommitDiffPreview`) are fine; store clients never call them.
 
+## Held back for store clients
+
+A value the store app's schema does not list fails the whole response, not just that field. Upstream values that are newer than the store app are held back here until the store app catches up. Each fold, check every entry and remove the ones the store app now decodes.
+
+- **`"delete-branch"` pull request action** (upstream #19257, in v0.1.0). Store 2.0 rejects it, which breaks the Pulls tab. GitHub no longer reports it, in `changeRequestActions` (`packages/source-control-github/src/client/definition.ts`) and `gitHubViewerPermissions` (`packages/source-control-github/src/server/GitHubPullRequestProvider.ts`). The desktop PR panel has no Delete branch button for merged or closed pull requests meanwhile. Restore both once the store app's `PullRequestAction` (`packages/contracts/src/pullRequest.ts`) includes `"delete-branch"`, and re-enable the four upstream tests skipped for it (search the test files for "Held back for store clients"):
+  - `GitHubPullRequestProvider.test.ts`: "advertises standalone branch deletion for source repository writers" and "offers everything to a viewer who can write to the repository".
+  - `GitHubPullRequestApi.test.ts`: "preserves the actual source fork name in provider detail". It also checks the fork name, which loses coverage while skipped.
+  - `apps/server/src/pullRequest/PullRequestService.test.ts`: "keeps branch deletion on the credential that passed source repo permissions". Upstream names it "...source repository permissions"; the shorter name keeps `.skip` from rewrapping the test.
+
 ## Review sources
 
 The personal reader in `apps/server/src/vcs/GitVcsDriverCore.ts` replaces upstream's preview reader:
@@ -50,7 +59,8 @@ On the machine the phone pairs to (`~/.t3`):
 
 - Merge, do not rebase the whole fork.
 - Fold an upstream ref with the same orchestration protocol version as the store app. Store builds can come from `main` ahead of any release tag, so check the RPC shapes rather than the version number.
-- Before running a fold as that server, check every RPC the store app calls against its schemas; `packages/contracts/src/review.test.ts` pins the review source shape, which store 2.0 shares with 1.3.0.
+- Before running a fold as that server, check every RPC the store app calls against its schemas, including new literal values in enums; `packages/contracts/src/review.test.ts` pins the review source shape, which store 2.0 shares with 1.3.0.
+- Go through [Held back for store clients](#held-back-for-store-clients): restore what the store app now decodes, and add anything new it would reject.
 - After a fold: `vp test run packages/contracts/src/review.test.ts` and `vp test run apps/server/src/vcs/GitVcsDriverCore.test.ts`; read auto-merged `GitVcsDriverCore.ts` and `packages/contracts` even without conflict markers; confirm working tree / branch on the phone.
 - Upstream review tests that assume its Changes meaning do not apply to the personal reader. Adapt the ones that check something the personal reader also does; leave out the rest and list them in the fold note.
 
