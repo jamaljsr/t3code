@@ -1,5 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, RunId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
@@ -52,7 +52,7 @@ describe("diffPanelStore", () => {
     store.selectGitScope(THREAD_REF, "unstaged");
     expect(selectedOid()).toBeNull();
     selectCommit();
-    store.selectTurn(THREAD_REF, TurnId.make("turn-1"));
+    store.selectTurn(THREAD_REF, RunId.make("turn-1"));
     expect(selectedOid()).toBeNull();
     selectCommit();
     store.selectBranchBaseRef(THREAD_REF, "origin/develop");
@@ -146,6 +146,18 @@ describe("diffPanelStore", () => {
     });
   });
 
+  it("keeps a custom base when the branch view is selected again", () => {
+    const store = useDiffPanelStore.getState();
+    store.selectBranchBaseRef(THREAD_REF, "origin/release");
+    store.selectGitScope(THREAD_REF, "branch");
+    store.selectTurn(THREAD_REF, RunId.make("turn-1"));
+    store.selectGitScope(THREAD_REF, "branch");
+
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "branch", baseRef: "origin/release" });
+  });
+
   it("preserves an explicit branch selection", () => {
     useDiffPanelStore.getState().selectGitScope(THREAD_REF, "branch");
 
@@ -156,7 +168,7 @@ describe("diffPanelStore", () => {
 
   it("clears incompatible selection fields when changing scopes", () => {
     const store = useDiffPanelStore.getState();
-    store.selectTurn(THREAD_REF, TurnId.make("turn-1"), "src/app.ts");
+    store.selectTurn(THREAD_REF, RunId.make("turn-1"), "src/app.ts");
     store.selectGitScope(THREAD_REF, "unstaged");
 
     expect(
@@ -176,7 +188,7 @@ describe("diffPanelStore", () => {
     );
     const store = useDiffPanelStore.getState();
     store.selectBranchBaseRef(THREAD_REF, "origin/release");
-    store.selectTurn(THREAD_REF, TurnId.make("turn-1"), "src/app.ts");
+    store.selectTurn(THREAD_REF, RunId.make("turn-1"), "src/app.ts");
     store.selectBranchBaseRef(otherThreadRef, "origin/main");
 
     store.selectGitScope(THREAD_REF, "unstaged");
@@ -195,7 +207,7 @@ describe("diffPanelStore", () => {
   });
 
   it("increments the reveal request when opening the same turn file again", () => {
-    const turnId = TurnId.make("turn-1");
+    const turnId = RunId.make("turn-1");
     useDiffPanelStore.getState().selectTurn(THREAD_REF, turnId, "src/app.ts");
     useDiffPanelStore.getState().selectTurn(THREAD_REF, turnId, "src/app.ts");
 
@@ -215,8 +227,8 @@ describe("diffPanelStore", () => {
   });
 
   it("reconciles a missing turn selection to the latest available turn", () => {
-    const missingTurnId = TurnId.make("turn-missing");
-    const latestTurnId = TurnId.make("turn-latest");
+    const missingTurnId = RunId.make("turn-missing");
+    const latestTurnId = RunId.make("turn-latest");
     useDiffPanelStore.getState().selectTurn(THREAD_REF, missingTurnId, "src/app.ts");
     useDiffPanelStore.getState().reconcileTurnSelection(THREAD_REF, [latestTurnId]);
 
