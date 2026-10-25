@@ -1122,9 +1122,7 @@ it.effect("runs branch deletion only when the host and viewer support it, never 
   }),
 );
 
-// Personal fork: skipped while "delete-branch" is held back for store clients.
-// See "Held back for store clients" in docs/internals/personal-overlay.md.
-it.effect.skip("keeps branch deletion on the credential that passed source repo permissions", () =>
+it.effect("keeps branch deletion on the credential that passed source repository permissions", () =>
   Effect.gen(function* () {
     let activeToken = "account-a";
     const requests: Array<{ operation: string; authorization: string | undefined }> = [];

@@ -61,8 +61,7 @@ export const definition = defineSourceControlClient({
     "draft",
     "close",
     "reopen",
-    // Personal fork: "delete-branch" is held back until the App Store mobile app can decode it.
-    // See "Held back for store clients" in docs/internals/personal-overlay.md.
+    "delete-branch",
     "update-branch",
     "enable-auto-merge",
     "disable-auto-merge",

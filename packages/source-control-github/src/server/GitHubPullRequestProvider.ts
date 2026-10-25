@@ -60,8 +60,7 @@ export function gitHubViewerPermissions(
   return {
     ...(access.canWrite ? { stackRebase: true } : {}),
     actions: [
-      // Personal fork: "delete-branch" is held back until the App Store mobile app can decode it.
-      // See "Held back for store clients" in docs/internals/personal-overlay.md.
+      ...(access.canDeleteBranch === true ? (["delete-branch"] as const) : []),
       // Keep disabling available if the repository has since turned auto-merge off.
       ...(access.canWrite
         ? ([
