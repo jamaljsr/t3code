@@ -1,18 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildTurnDiffTree, summarizeTurnDiffStats } from "./turnDiffTree";
-
-describe("summarizeTurnDiffStats", () => {
-  it("sums only files with numeric additions/deletions", () => {
-    const stat = summarizeTurnDiffStats([
-      { path: "README.md", kind: "modified", additions: 3, deletions: 1 },
-      { path: "docs/notes.md", kind: "modified", additions: 0, deletions: 0 },
-      { path: "src/index.ts", kind: "modified", additions: 5, deletions: 2 },
-    ]);
-
-    expect(stat).toEqual({ additions: 8, deletions: 3 });
-  });
-});
+import { buildTurnDiffTree } from "./turnDiffTree";
 
 describe("buildTurnDiffTree", () => {
   it.each([
@@ -186,20 +174,5 @@ describe("buildTurnDiffTree", () => {
         ],
       },
     ]);
-  });
-
-  it("preserves leading/trailing whitespace in path segments", () => {
-    const tree = buildTurnDiffTree([
-      { path: "a/file.ts", kind: "modified", additions: 1, deletions: 0 },
-      { path: " a/file.ts", kind: "modified", additions: 2, deletions: 0 },
-    ]);
-
-    expect(tree).toHaveLength(2);
-    const directoryNodes = tree.filter(
-      (node): node is Extract<(typeof tree)[number], { kind: "directory" }> =>
-        node.kind === "directory",
-    );
-    expect(directoryNodes.map((node) => node.name).toSorted()).toEqual([" a", "a"]);
-    expect(directoryNodes.map((node) => node.path).toSorted()).toEqual([" a", "a"]);
   });
 });

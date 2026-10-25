@@ -1,6 +1,6 @@
 import * as DateTime from "effect/DateTime";
 import { useAtomValue } from "@effect/atom-react";
-import type { FileDiffContentsLoader } from "@pierre/diffs";
+import type { FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs";
 import { useParams } from "@tanstack/react-router";
 import {
   type AtomCommandResult,
@@ -64,11 +64,11 @@ import {
 } from "../lib/diffFileFocus";
 import { diffHunkScrollbarMarksForFile } from "../lib/diffHunkScrollbar";
 import { shouldShowDiffCommitPane } from "../lib/diffCommitList";
-import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
+import { useStableCallback } from "../hooks/useStableCallback";
 import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefresh";
-import { useProject, useThreadProjection, useThreadShell } from "../state/entities";
+import { useProject, useThreadCheckpointSummaries, useThreadShell } from "../state/entities";
 import { resolveThreadRouteRef } from "../threadRoutes";
-import { useClientSettings, useUpdateClientSettings } from "../hooks/useSettings";
+import { useClientSettings, updateClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
@@ -112,6 +112,8 @@ type DiffThemeType = "light" | "dark";
 const AUTOMATIC_BASE_REF = "__automatic_base_ref__";
 
 const EMPTY_COLLAPSED_DIFF_FILE_KEYS: ReadonlySet<string> = new Set();
+// Files load one at a time here, so there are no lazy placeholders to keep a draft alive.
+const NO_PENDING_DIFF_FILES: ReadonlyArray<FileDiffMetadata> = [];
 
 const DIFF_PANEL_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
 :is(
@@ -327,6 +329,7 @@ interface DiffPanelProps {
   mode?: DiffPanelMode;
   composerDraftTarget: ScopedThreadRef | DraftId;
   workspaceMutationId: string | null;
+  visible: boolean;
 }
 
 export { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
@@ -335,11 +338,11 @@ export default function DiffPanel({
   mode = "inline",
   composerDraftTarget,
   workspaceMutationId,
+  visible,
 }: DiffPanelProps) {
   const { resolvedTheme } = useTheme();
   const settings = useClientSettings();
   const diffRenderMode = settings.diffLayout;
-  const updateClientSettings = useUpdateClientSettings();
   const setDiffRenderMode = (diffLayout: "stacked" | "split") =>
     updateClientSettings({ diffLayout });
   const [wordWrap, setWordWrap] = useState(settings.wordWrap);
@@ -382,7 +385,6 @@ export default function DiffPanel({
   });
   const activeThreadId = routeThreadRef?.threadId ?? null;
   const activeThread = useThreadShell(routeThreadRef);
-  const activeThreadProjection = useThreadProjection(routeThreadRef)?.projection ?? null;
   const activeProjectId = activeThread?.projectId ?? null;
   const activeProject = useProject(
     activeThread && activeProjectId
@@ -417,21 +419,16 @@ export default function DiffPanel({
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
   );
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
-  const { turnDiffSummaries, inferredCheckpointTurnCountByRunId } =
-    useTurnDiffSummaries(activeThreadProjection);
+  const turnDiffSummaries = useThreadCheckpointSummaries(routeThreadRef);
   const orderedTurnDiffSummaries = useMemo(
     () =>
-      [...turnDiffSummaries].toSorted((left, right) => {
-        const leftTurnCount =
-          left.checkpointTurnCount ?? inferredCheckpointTurnCountByRunId[left.runId] ?? 0;
-        const rightTurnCount =
-          right.checkpointTurnCount ?? inferredCheckpointTurnCountByRunId[right.runId] ?? 0;
-        if (leftTurnCount !== rightTurnCount) {
-          return rightTurnCount - leftTurnCount;
+      turnDiffSummaries.toSorted((left, right) => {
+        if (left.checkpointTurnCount !== right.checkpointTurnCount) {
+          return right.checkpointTurnCount - left.checkpointTurnCount;
         }
         return right.completedAt.localeCompare(left.completedAt);
       }),
-    [inferredCheckpointTurnCountByRunId, turnDiffSummaries],
+    [turnDiffSummaries],
   );
 
   useEffect(() => {
@@ -489,9 +486,7 @@ export default function DiffPanel({
       ? undefined
       : (orderedTurnDiffSummaries.find((summary) => summary.runId === selectedTurnId) ??
         orderedTurnDiffSummaries[0]);
-  const selectedCheckpointTurnCount =
-    selectedTurn &&
-    (selectedTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByRunId[selectedTurn.runId]);
+  const selectedCheckpointTurnCount = selectedTurn?.checkpointTurnCount;
   const latestTurn = orderedTurnDiffSummaries[0];
   const selectedScopeLabel =
     selectedTurnId === null
@@ -560,19 +555,45 @@ export default function DiffPanel({
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}`
     : null;
 
+  const previewOpenHandledRef = useRef(false);
+  const refreshDiffForWorkspaceMutation = useStableCallback(() => {
+    previewOpenHandledRef.current = true;
+    refreshBranchDiffPreview();
+  });
+
+  // A mutation refresh also satisfies revalidation for the current opening.
+  useWorkspaceMutationRefresh({
+    enabled: canRefreshGitDiff,
+    mutationId: workspaceMutationId,
+    refresh: refreshDiffForWorkspaceMutation,
+    resourceKey: `diff:${activeThreadRefreshKey ?? ""}`,
+  });
+
+  // A hidden panel keeps its last preview, so reopening it revalidates once.
+  useEffect(() => {
+    if (!visible || !canRefreshGitDiff) {
+      previewOpenHandledRef.current = false;
+      return;
+    }
+    if (previewOpenHandledRef.current) return;
+    previewOpenHandledRef.current = true;
+    if (branchDiffPreview.data !== null && !branchDiffPreview.isPending) {
+      refreshBranchDiffPreview();
+    }
+  }, [
+    branchDiffPreview.data,
+    branchDiffPreview.isPending,
+    canRefreshGitDiff,
+    refreshBranchDiffPreview,
+    visible,
+  ]);
+
   useEffect(() => {
     if (!canRefreshGitDiff) return;
     const refreshOnFocus = () => refreshBranchDiffPreview();
     window.addEventListener("focus", refreshOnFocus);
     return () => window.removeEventListener("focus", refreshOnFocus);
   }, [canRefreshGitDiff, refreshBranchDiffPreview]);
-
-  useWorkspaceMutationRefresh({
-    enabled: canRefreshGitDiff,
-    mutationId: workspaceMutationId,
-    refresh: refreshBranchDiffPreview,
-    resourceKey: `diff:${activeThreadRefreshKey ?? ""}`,
-  });
 
   const commitPreviewCwd = activeCwd;
   const commitDiffPreview = useEnvironmentQuery(
@@ -1170,10 +1191,7 @@ export default function DiffPanel({
               <DropdownMenuSubContent>
                 <DropdownMenuRadioGroup value={selectedTurnValue} onValueChange={selectScopeValue}>
                   {orderedTurnDiffSummaries.map((summary) => {
-                    const turnCount =
-                      summary.checkpointTurnCount ??
-                      inferredCheckpointTurnCountByRunId[summary.runId] ??
-                      "?";
+                    const turnCount = summary.checkpointTurnCount;
                     return (
                       <DropdownMenuRadioItem
                         key={summary.runId}
@@ -1558,6 +1576,7 @@ export default function DiffPanel({
                       codeViewKey={codeViewMountKey}
                       className="diff-render-surface h-full min-h-0 overflow-auto"
                       files={codeViewFiles}
+                      pendingFiles={NO_PENDING_DIFF_FILES}
                       sectionId={reviewSectionId}
                       sectionTitle={reviewSectionTitle}
                       composerDraftTarget={composerDraftTarget}
