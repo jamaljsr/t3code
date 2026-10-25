@@ -70,9 +70,12 @@ The six tests the v0.1.0 fold left out stay out.
 
 ## Lint
 
-Upstream applies the React Compiler lint rules to every web file. `ThreadDiffPanel.tsx` fails 25
-of them (manual `useMemo` and `useCallback`, refs read during render, state set in effects). They
-are in personal code that predates the fold and did not block it.
+Upstream applies the React Compiler lint rules to every web file. `ThreadDiffPanel.tsx` failed 25
+of them in personal code that predates the fold. It now passes: state that reset in effects
+adjusts during render, the load effect only fetches, and the reveal effect reads the latest file
+through `useEffectEvent`. The panel was checked in the browser against a copy of real data:
+working tree, commit, and turn diffs, file switching, the file cache, hunk navigation, reopening
+the panel, and phone width.
 
 ## Verification
 
