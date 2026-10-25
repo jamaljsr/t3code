@@ -4,7 +4,7 @@
 
 ## What this fork is
 
-`personal` overlays pingdotgg/t3code. This checkout builds the desktop binaries that are installed and run daily; the dev app runs from it only for testing. Daily mobile is the App Store app (2.0.0 at the time this was written). `apps/mobile` in the repo is not that binary, and its review screen follows upstream unchanged.
+`personal` overlays pingdotgg/t3code. This checkout builds the desktop binaries that are installed and run daily; the dev app runs from it only for testing. Daily mobile is the App Store app (2.1.0 at the time this was written). `apps/mobile` in the repo is not that binary, and its review screen follows upstream unchanged.
 
 ## Protocol
 
@@ -27,10 +27,7 @@ New RPCs (`getDiffFilePatch`, `getCommitDiffPreview`) are fine; store clients ne
 
 A value the store app's schema does not list fails the whole response, not just that field. Upstream values that are newer than the store app are held back here until the store app catches up. Each fold, check every entry and remove the ones the store app now decodes.
 
-- **`"delete-branch"` pull request action** (upstream #19257, in v0.1.0). Store 2.0 rejects it, which breaks the Pulls tab. GitHub no longer reports it, in `changeRequestActions` (`packages/source-control-github/src/client/definition.ts`) and `gitHubViewerPermissions` (`packages/source-control-github/src/server/GitHubPullRequestProvider.ts`). The desktop PR panel has no Delete branch button for merged or closed pull requests meanwhile. Restore both once the store app's `PullRequestAction` (`packages/contracts/src/pullRequest.ts`) includes `"delete-branch"`, and re-enable the four upstream tests skipped for it (search the test files for "Held back for store clients"):
-  - `GitHubPullRequestProvider.test.ts`: "advertises standalone branch deletion for source repository writers" and "offers everything to a viewer who can write to the repository".
-  - `GitHubPullRequestApi.test.ts`: "preserves the actual source fork name in provider detail". It also checks the fork name, which loses coverage while skipped.
-  - `apps/server/src/pullRequest/PullRequestService.test.ts`: "keeps branch deletion on the credential that passed source repo permissions". Upstream names it "...source repository permissions"; the shorter name keeps `.skip` from rewrapping the test.
+Nothing is held back at the moment. Store 2.1.0 decodes `"delete-branch"`, and it reads pull request action, merge method, update method, and verdict lists with `ForwardCompatibleArray`, so new values in those lists no longer need holding back. To hold a value back, stop the server from reporting it, skip the upstream tests that assert it with a comment pointing here, and list it in this section with where to restore it.
 
 ## Review sources
 

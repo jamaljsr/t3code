@@ -29,7 +29,7 @@ fold.
 | `apps/server/src/review/ReviewService.ts`, `apps/server/src/server.ts`   | Upstream's versions, which use `KnownWorkspaces`.                                                                                                                                  |
 | `apps/server/src/project/AgentSessionScanner.ts`                         | Kept the symlink-resolved base and worktree folder exclusions.                                                                                                                     |
 | `packages/contracts/src/review.ts`                                       | Personal `manifest` shape; upstream only dropped a comment.                                                                                                                        |
-| `packages/source-control-github/src/server/GitHubPullRequestProvider.ts` | `delete-branch` stays held back; upstream's comment for auto-merge disabling kept.                                                                                                 |
+| `packages/source-control-github/src/server/GitHubPullRequestProvider.ts` | Upstream's version. `delete-branch` is no longer held back, since store 2.1.0 decodes it.                                                                                          |
 | `apps/web/src/components/Sidebar.tsx`                                    | Upstream's file with the personal header, selector, scope reads, and empty state reapplied.                                                                                        |
 | `apps/web/src/components/ChatView.tsx`                                   | Upstream's file. The diff panel openings now live in hooks; see Decisions.                                                                                                         |
 | `apps/web/src/components/DiffPanel.tsx`, `diffPanelStore.ts`             | Kept the re-export of `ThreadDiffPanel.tsx` and the working-tree default.                                                                                                          |
@@ -78,8 +78,8 @@ are in personal code that predates the fold and did not block it.
 
 - Review contracts, Git driver, review service, Codex protocol, and provider compatibility tests:
   216 passed.
-- GitHub pull request provider and API tests and the pull request service tests: 200 passed, 4
-  skipped for the held-back `delete-branch`.
+- GitHub pull request provider and API tests and the pull request service tests: 204 passed,
+  including the four `delete-branch` tests that were skipped while it was held back.
 - Web diff panel, file tree, commit list, hunk, diff store, timestamp, turn tree, and project
   scope tests: 138 passed. Sidebar, ChatView logic, right panel, code view, and diff transition
   tests, including browser tests: 154 passed. Mobile review model tests: 5 passed.
