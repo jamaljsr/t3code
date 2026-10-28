@@ -64,8 +64,8 @@ import {
 } from "../lib/diffFileFocus";
 import { diffHunkScrollbarMarksForFile } from "../lib/diffHunkScrollbar";
 import { shouldShowDiffCommitPane } from "../lib/diffCommitList";
-import { useStableCallback } from "../hooks/useStableCallback";
 import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefresh";
+import { LIVE_REFRESH_MIN_INTERVAL_MS, useLiveRefresh } from "../hooks/useLiveRefresh";
 import { useProject, useThreadCheckpointSummaries, useThreadShell } from "../state/entities";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { useClientSettings, updateClientSettings } from "../hooks/useSettings";
@@ -563,45 +563,33 @@ export default function DiffPanel({
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}`
     : null;
 
-  const previewOpenHandledRef = useRef(false);
-  const refreshDiffForWorkspaceMutation = useStableCallback(() => {
-    previewOpenHandledRef.current = true;
-    refreshBranchDiffPreview();
-  });
+  const diffRefreshKey = `diff:${activeThreadRefreshKey ?? ""}`;
 
-  // A mutation refresh also satisfies revalidation for the current opening.
   useWorkspaceMutationRefresh({
     enabled: canRefreshGitDiff,
     mutationId: workspaceMutationId,
-    refresh: refreshDiffForWorkspaceMutation,
-    resourceKey: `diff:${activeThreadRefreshKey ?? ""}`,
+    refresh: refreshBranchDiffPreview,
+    resourceKey: diffRefreshKey,
   });
 
-  // A hidden panel keeps its last preview, so reopening it revalidates once.
-  useEffect(() => {
-    if (!visible || !canRefreshGitDiff) {
-      previewOpenHandledRef.current = false;
-      return;
-    }
-    if (previewOpenHandledRef.current) return;
-    previewOpenHandledRef.current = true;
-    if (branchDiffPreview.data !== null && !branchDiffPreview.isPending) {
-      refreshBranchDiffPreview();
-    }
-  }, [
-    branchDiffPreview.data,
-    branchDiffPreview.isPending,
-    canRefreshGitDiff,
-    refreshBranchDiffPreview,
-    visible,
-  ]);
-
-  useEffect(() => {
-    if (!canRefreshGitDiff) return;
-    const refreshOnFocus = () => refreshBranchDiffPreview();
-    window.addEventListener("focus", refreshOnFocus);
-    return () => window.removeEventListener("focus", refreshOnFocus);
-  }, [canRefreshGitDiff, refreshBranchDiffPreview]);
+  // The panel stays mounted while hidden, so showing it revalidates the diff; that also stands in
+  // for focus events missed while hidden. A git diff is too costly to repeat on a timer. A diff
+  // read within the floor, such as a workspace mutation's refresh, already counts as that
+  // revalidation.
+  useLiveRefresh(
+    branchDiffPreview.data !== null && !branchDiffPreview.isPending
+      ? () => {
+          if (Date.now() - branchDiffPreview.dataUpdatedAt < LIVE_REFRESH_MIN_INTERVAL_MS) return;
+          refreshBranchDiffPreview();
+        }
+      : null,
+    {
+      enabled: visible && canRefreshGitDiff,
+      key: diffRefreshKey,
+      intervalMs: null,
+      refreshOnShow: true,
+    },
+  );
 
   const commitPreviewCwd = activeCwd;
   const commitDiffPreview = useEnvironmentQuery(

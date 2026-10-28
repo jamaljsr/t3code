@@ -215,6 +215,7 @@
   "apps/web/src/components/Sidebar.pointer.ts": 1,
   "apps/web/src/components/Sidebar.tsx": 10,
   "apps/web/src/components/SlowRpcRequestToastCoordinator.tsx": 2,
+  "apps/web/src/components/ThreadDiffPanel.tsx": 3,
   "apps/web/src/components/ThreadNotificationCoordinator.tsx": 5,
   "apps/web/src/components/ThreadRouteView.tsx": 5,
   "apps/web/src/components/ThreadTerminalDrawer.tsx": 13,

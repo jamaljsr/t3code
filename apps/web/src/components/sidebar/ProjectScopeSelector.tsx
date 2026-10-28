@@ -1,7 +1,5 @@
 import { CheckIcon, ChevronDownIcon, FolderIcon, SettingsIcon } from "lucide-react";
 import {
-  useEffect,
-  useMemo,
   useState,
   type Dispatch,
   type MouseEvent as ReactMouseEvent,
@@ -14,7 +12,6 @@ import { SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import {
-  reconcileProjectScopeSelection,
   resolveProjectScope,
   selectOnlyProjectScope,
   toggleProjectScopeSelection,
@@ -29,14 +26,9 @@ export function useProjectScope(
   Dispatch<SetStateAction<ProjectScopeSelection>>,
 ] {
   const [selection, setSelection] = useState<ProjectScopeSelection>(null);
-
-  useEffect(() => {
-    setSelection((currentSelection) => reconcileProjectScopeSelection(currentSelection, projects));
-  }, [projects]);
-
-  const scope = useMemo(() => resolveProjectScope(selection, projects), [projects, selection]);
-
-  return [scope, setSelection] as const;
+  // The stored selection keeps projects that are gone, so a project that returns rejoins the
+  // scope. Resolving reconciles it against the current projects.
+  return [resolveProjectScope(selection, projects), setSelection] as const;
 }
 
 interface ProjectScopeSelectorProps {
