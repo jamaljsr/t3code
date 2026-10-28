@@ -50,7 +50,7 @@ by the PR Code tab and can evolve independently.
 
 Completed folds should leave a maintenance note with the source refs, conflict resolutions,
 semantic repairs, and compatibility audit. See
-[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example, and [v0.1.2](personal-overlay-v0.1.2-merge.md) for the latest fold.
+[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example, and [v0.1.3](personal-overlay-v0.1.3-merge.md) for the latest fold.
 
 On the machine the phone pairs to (`~/.t3`):
 
