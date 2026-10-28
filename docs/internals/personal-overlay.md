@@ -60,6 +60,7 @@ On the machine the phone pairs to (`~/.t3`):
 - Go through [Held back for store clients](#held-back-for-store-clients): restore what the store app now decodes, and add anything new it would reject.
 - After merging a release tag, run `node scripts/update-release-package-versions.ts <tag version>` and commit the result. Upstream writes the release version into the package files only at build time, so a tag still carries the previous version. The server reports that version, and provider compatibility policies in `apps/server/src/provider/model-manifest.json` are chosen by it; a stale version can flag a supported provider as broken. If upstream's tests fail on the version change, look for their fix on `main` after the tag.
 - After a fold: `vp test run packages/contracts/src/review.test.ts` and `vp test run apps/server/src/vcs/GitVcsDriverCore.test.ts`; read auto-merged `GitVcsDriverCore.ts` and `packages/contracts` even without conflict markers; confirm working tree / branch on the phone.
+- After pushing a fold, update the Linux server that serves the desktop app; see [Personal fork on a Linux server](../operations/personal-server.md).
 - Upstream review tests that assume its Changes meaning do not apply to the personal reader. Adapt the ones that check something the personal reader also does; leave out the rest and list them in the fold note.
 
 Playground folds of `main` belong in a worktree that does not use `~/.t3` and that the phone does not pair to.
