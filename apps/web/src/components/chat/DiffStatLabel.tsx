@@ -44,7 +44,7 @@ export const DiffStatLabel = memo(function DiffStatLabel(props: {
           aria-hidden="true"
           className={cn(
             "font-mono",
-            additions === 0 ? "text-muted-foreground" : "text-diff-addition",
+            additions === 0 ? "text-muted-foreground" : "text-diff-addition-foreground",
           )}
         >
           {additions === 0 ? "–" : `+${formatCompactDiffCount(additions)}`}
@@ -53,7 +53,7 @@ export const DiffStatLabel = memo(function DiffStatLabel(props: {
           aria-hidden="true"
           className={cn(
             "font-mono",
-            deletions === 0 ? "text-muted-foreground" : "text-diff-deletion",
+            deletions === 0 ? "text-muted-foreground" : "text-diff-deletion-foreground",
           )}
         >
           {deletions === 0 ? "–" : `-${formatCompactDiffCount(deletions)}`}
