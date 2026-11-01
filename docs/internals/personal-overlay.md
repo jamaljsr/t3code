@@ -21,7 +21,7 @@ Required shape for `review.getDiffPreview` sources:
 
 Store clients load a truncated source one file at a time through `getDiffPreview` with a `file` input. The server answers with only that source, its patch, and a one-entry `files`.
 
-New RPCs (`getDiffFilePatch`, `getCommitDiffPreview`) are fine; store clients never call them.
+New RPCs (`getDiffFilePatch`, `getCommitDiffPreview`) are fine; store clients never call them. The same goes for the `commit` source kind, which `getDiffPreview` returns only for a `commitSha` request.
 
 ## Held back for store clients
 
@@ -35,6 +35,7 @@ The personal reader in `apps/server/src/vcs/GitVcsDriverCore.ts` replaces upstre
 
 - The working-tree source compares the working tree, including untracked files, with `HEAD`.
 - The branch-range source compares commits only: `base...HEAD`, plus the branch's commit list for the desktop commit filter.
+- A `commitSha` request, sent by commit links, returns one `commit` source: that commit against its first parent, from any local branch.
 
 Upstream's branch source ("Changes") instead compares the working tree with the merge base, so it also includes uncommitted and untracked files. Store clients show the personal meaning when connected to this fork. The desktop panel and the generic panel openings in `ChatView.tsx` default to the working tree; upstream defaults to its Changes view.
 
@@ -43,6 +44,8 @@ Upstream's branch source ("Changes") instead compares the working tree with the 
 Implementation: `apps/web/src/components/ThreadDiffPanel.tsx`.
 `apps/web/src/components/DiffPanel.tsx` re-exports it. When merging `main`, keep-ours on `DiffPanel.tsx`. Port individual upstream fixes by hand if they still apply (do not take stacked-hunk UI). Find in diffs comes from the shared code view; the panel never collapses files, so it passes a no-op reveal callback.
 
+The panel reads its selection from upstream's `diffPanelStore.ts` and must handle every `DiffPanelSelection` kind. Upstream adds kinds for its own panel, such as tool calls and commits; a kind this panel does not handle shows as branch changes.
+
 The personal tree is `diffs/ThreadDiffFileTree.tsx`. Upstream's `diffs/DiffFileTree.tsx` is used
 by the PR Code tab and can evolve independently.
 
@@ -50,7 +53,7 @@ by the PR Code tab and can evolve independently.
 
 Completed folds should leave a maintenance note with the source refs, conflict resolutions,
 semantic repairs, and compatibility audit. See
-[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example, and [v0.1.3](personal-overlay-v0.1.3-merge.md) for the latest fold.
+[`personal-overlay-v0.0.34-merge.md`](personal-overlay-v0.0.34-merge.md) for the first example, and [v0.1.6](personal-overlay-v0.1.6-merge.md) for the latest fold.
 
 On the machine the phone pairs to (`~/.t3`):
 
