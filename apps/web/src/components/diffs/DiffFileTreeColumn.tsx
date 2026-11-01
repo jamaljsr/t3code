@@ -2,6 +2,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useEffect, useRef, useState } from "react";
 
 import { useResizableWidth } from "~/hooks/useResizableWidth";
+import { observeResize } from "~/lib/observeResize";
 import {
   DIFF_FILE_TREE_DEFAULT_WIDTH,
   DIFF_FILE_TREE_MIN_WIDTH,
@@ -57,14 +58,13 @@ export function DiffFileTreeColumn({
     edge: "right",
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tracks the diff panel's DOM width to cap the tree column
   useEffect(() => {
     const parent = columnRef.current?.parentElement;
     if (!parent) return;
     const update = () => setPanelWidth(parent.getBoundingClientRect().width);
     update();
-    const observer = new ResizeObserver(update);
-    observer.observe(parent);
-    return () => observer.disconnect();
+    return observeResize(parent, update);
   }, []);
 
   return (
@@ -85,7 +85,8 @@ export function DiffFileTreeColumn({
       </div>
       {commitList ? (
         <div className="max-h-[40%] min-h-0 shrink-0 overflow-y-auto border-t border-border py-1">
-          <DiffCommitList {...commitList} />
+          {/* Expanded commit bodies reset when the list changes. */}
+          <DiffCommitList key={commitList.listIdentity} {...commitList} />
         </div>
       ) : null}
       <div

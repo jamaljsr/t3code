@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 function LoadingFileNotice({ path }: { path: string }) {
   const [visible, setVisible] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a timer delays the notice so quick file switches never flash it
   useEffect(() => {
     const timer = setTimeout(() => setVisible(true), 150);
     return () => clearTimeout(timer);

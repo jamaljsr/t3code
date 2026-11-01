@@ -1,5 +1,4 @@
 import type { CodeViewScrollTarget, FileDiffMetadata } from "@pierre/diffs";
-import type { TurnId } from "@t3tools/contracts";
 
 import { getDiffLineStat } from "./diffRendering";
 import type { TurnDiffFileChange } from "../types";
@@ -71,7 +70,7 @@ export function shouldRenderDiffHunkNav(input: {
   return !input.collapsed && shouldShowDiffHunkNav(input.hunkCount);
 }
 
-export const DIFF_HYDRATION_WAIT_TIMEOUT_MS = 2_000;
+const DIFF_HYDRATION_WAIT_TIMEOUT_MS = 2_000;
 
 export function waitForFileDiffHydration(
   fileDiff: Pick<FileDiffMetadata, "isPartial">,
@@ -104,7 +103,7 @@ export function waitForFileDiffHydration(
   });
 }
 
-export function afterNextLayout(schedule = requestAnimationFrame): Promise<void> {
+function afterNextLayout(schedule = requestAnimationFrame): Promise<void> {
   return new Promise((resolve) => {
     schedule(() => {
       schedule(() => {
@@ -153,9 +152,9 @@ export async function revealFocusedDiffAfterHydration(options: {
 
 export function canExpandUnchanged(input: {
   readonly hasGitLoader: boolean;
-  readonly selectedTurnId: TurnId | string | null;
+  readonly isPatchSelection: boolean;
 }): boolean {
-  return input.hasGitLoader && input.selectedTurnId === null;
+  return input.hasGitLoader && !input.isPatchSelection;
 }
 
 export function shouldExpandUnchanged(input: {

@@ -37,7 +37,6 @@ function render(
       selectedCommitOid={null}
       onSelectCommit={() => {}}
       onSelectAllChanges={() => {}}
-      listIdentity="hash:main"
       timestampFormat="24-hour"
       onSelectUncommitted={() => {}}
       {...overrides}

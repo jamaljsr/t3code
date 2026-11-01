@@ -15,6 +15,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   Columns2Icon,
+  FlaskConicalOffIcon,
   PanelLeftIcon,
   PilcrowIcon,
   RefreshCwIcon,
@@ -22,13 +23,17 @@ import {
   TextWrapIcon,
 } from "lucide-react";
 import { createRef, useEffect, useEffectEvent, useRef, useState } from "react";
+import { isTestChangedFile } from "@t3tools/shared/changedFileKind";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { type DraftId } from "../composerDraftStore";
 import { openDiffFilePrimaryAction } from "../diffFileActions";
-import { useCheckpointDiff } from "~/lib/checkpointDiffState";
+import { useFileContextMenuHandler } from "../fileContextMenu";
+import { useFilesystemReadAccess } from "~/state/filesystem";
+import { toolCallDiff } from "../lib/toolCallDiff";
+import { useCheckpointDiff, useTurnItemDetail } from "~/state/queries";
 import { cn } from "~/lib/utils";
 import {
-  resolveSelectedCommitOid,
+  resolveToolCallDiffTarget,
   selectThreadDiffPanelSelection,
   useDiffPanelStore,
 } from "../diffPanelStore";
@@ -66,10 +71,16 @@ import { diffHunkScrollbarMarksForFile } from "../lib/diffHunkScrollbar";
 import { shouldShowDiffCommitPane } from "../lib/diffCommitList";
 import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefresh";
 import { LIVE_REFRESH_MIN_INTERVAL_MS, useLiveRefresh } from "../hooks/useLiveRefresh";
-import { useProject, useThreadCheckpointSummaries, useThreadShell } from "../state/entities";
+import {
+  useProject,
+  useQuietThreadVisibleTurnItems,
+  useThreadCheckpointSummaries,
+  useThreadShell,
+} from "../state/entities";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { useClientSettings, updateClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
+import { DiffFilePathCopyButton } from "./DiffFilePathCopyButton";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
@@ -78,6 +89,7 @@ import { DiffFileTransition } from "./diffs/DiffFileTransition";
 import { DiffFileTreeColumn } from "./diffs/DiffFileTreeColumn";
 import { DiffHunkNav } from "./diffs/DiffHunkNav";
 import { DiffHunkScrollbarMarks } from "./diffs/DiffHunkScrollbarMarks";
+import { useHideTestFiles } from "./diffs/useHideTestFiles";
 import { Button } from "./ui/button";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 import { Switch } from "./ui/switch";
@@ -332,8 +344,6 @@ interface DiffPanelProps {
   visible: boolean;
 }
 
-export { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
-
 export default function DiffPanel({
   mode = "inline",
   composerDraftTarget,
@@ -349,6 +359,7 @@ export default function DiffPanel({
   const [diffIgnoreWhitespace, setDiffIgnoreWhitespace] = useState(settings.diffIgnoreWhitespace);
   const [baseRefQuery, setBaseRefQuery] = useState("");
   const [fileTreeVisible, setFileTreeVisible] = useState(DIFF_FILE_TREE_VISIBLE_BY_DEFAULT);
+  const [hideTestFiles, setHideTestFiles] = useHideTestFiles();
   const [treeFocus, setTreeFocus] = useState<{
     readonly path: string;
     readonly requestId: number;
@@ -411,6 +422,9 @@ export default function DiffPanel({
     activeThread?.environmentId ?? null,
     serverConfig?.availableEditors ?? [],
   );
+  const fileAccess = useFilesystemReadAccess(activeThread?.environmentId ?? null);
+  const { canReadFiles } = fileAccess;
+  const onFileContextMenu = useFileContextMenuHandler(activeThread?.environmentId ?? null);
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
   const getDiffFilePatch = useAtomCommand(reviewEnvironment.getDiffFilePatch);
   const gitStatusQuery = useEnvironmentQuery(
@@ -424,6 +438,17 @@ export default function DiffPanel({
   const diffSelection = useDiffPanelStore((state) =>
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
   );
+  const toolCallSelection = diffSelection.kind === "tool-call" ? diffSelection : null;
+  const toolCallItems = useQuietThreadVisibleTurnItems(toolCallSelection ? routeThreadRef : null);
+  const toolCallDetail = useTurnItemDetail(
+    toolCallSelection && routeThreadRef
+      ? {
+          ...resolveToolCallDiffTarget(toolCallSelection, toolCallItems),
+          environmentId: routeThreadRef.environmentId,
+        }
+      : null,
+  );
+  const toolCallItem = toolCallDetail.data?.item;
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
   const turnDiffSummaries = useThreadCheckpointSummaries(routeThreadRef);
   const orderedTurnDiffSummaries = turnDiffSummaries.toSorted((left, right) => {
@@ -433,6 +458,7 @@ export default function DiffPanel({
     return right.completedAt.localeCompare(left.completedAt);
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- rewrites the persisted diff store selection to the latest turn when the selected turn disappears
   useEffect(() => {
     if (!routeThreadRef || diffSelection.kind !== "turn") return;
     useDiffPanelStore.getState().reconcileTurnSelection(
@@ -442,16 +468,18 @@ export default function DiffPanel({
   }, [diffSelection, orderedTurnDiffSummaries, routeThreadRef]);
 
   const selectedTurnId = diffSelection.kind === "turn" ? diffSelection.turnId : null;
+  // Turns and tool calls render a recorded patch instead of reading the repository.
+  const isPatchSelection = selectedTurnId !== null || toolCallSelection !== null;
   const selectedGitScope = diffSelection.kind === "unstaged" ? "unstaged" : "branch";
   const selectedBaseRef = useDiffPanelStore((state) =>
-    diffSelection.kind === "branch"
+    diffSelection.kind === "branch" || diffSelection.kind === "commit"
       ? diffSelection.baseRef
       : routeThreadRef
         ? (state.branchBaseRefByThreadKey[scopedThreadKey(routeThreadRef)] ?? null)
         : null,
   );
   const branchDiffPreview = useEnvironmentQuery(
-    selectedTurnId === null && activeThread && activeCwd
+    canReadFiles && !isPatchSelection && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
           input: {
@@ -470,16 +498,9 @@ export default function DiffPanel({
   );
   const showUncommitted = (workingTreeSource?.manifest.length ?? 0) > 0;
   const branchCommits = branchRangeSource?.commits ?? [];
-  const selectedCommitOid = resolveSelectedCommitOid(
-    diffSelection,
-    activeCwd,
-    gitStatusQuery.data?.refName ?? null,
-    branchDiffPreview.data && !branchRangeSource?.commitsError
-      ? { cwd: branchDiffPreview.data.cwd, commits: branchCommits }
-      : null,
-  );
+  const selectedCommitOid = diffSelection.kind === "commit" ? diffSelection.sha : null;
   const branchChangesSelected =
-    selectedTurnId === null && selectedGitScope === "branch" && selectedCommitOid === null;
+    !isPatchSelection && selectedGitScope === "branch" && selectedCommitOid === null;
   const selectedFilePath = diffSelection.kind === "turn" ? diffSelection.filePath : null;
   const selectedFileRevealRequestId =
     diffSelection.kind === "turn" ? diffSelection.revealRequestId : 0;
@@ -490,8 +511,9 @@ export default function DiffPanel({
         orderedTurnDiffSummaries[0]);
   const selectedCheckpointTurnCount = selectedTurn?.checkpointTurnCount;
   const latestTurn = orderedTurnDiffSummaries[0];
-  const selectedScopeLabel =
-    selectedTurnId === null
+  const selectedScopeLabel = toolCallSelection
+    ? "Tool call"
+    : selectedTurnId === null
       ? selectedCommitOid
         ? `Commit ${selectedCommitOid.slice(0, 7)}`
         : selectedGitScope === "unstaged"
@@ -500,11 +522,13 @@ export default function DiffPanel({
       : selectedTurn?.runId === latestTurn?.runId
         ? "Latest turn"
         : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
-  const reviewSectionId = selectedTurn
-    ? `turn:${selectedTurn.runId}`
-    : selectedCommitOid
-      ? `commit:${selectedCommitOid}`
-      : selectedGitScope;
+  const reviewSectionId = toolCallSelection
+    ? `tool-call:${toolCallSelection.threadId}:${toolCallSelection.itemId}`
+    : selectedTurn
+      ? `turn:${selectedTurn.runId}`
+      : selectedCommitOid
+        ? `commit:${selectedCommitOid}`
+        : selectedGitScope;
   const collapseScopeKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}:${reviewSectionId}`
     : null;
@@ -531,13 +555,15 @@ export default function DiffPanel({
     }
   }
 
-  const reviewSectionTitle = selectedTurn
-    ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
-    : selectedCommitOid
-      ? `Commit ${selectedCommitOid.slice(0, 7)}`
-      : selectedGitScope === "unstaged"
-        ? "Working tree"
-        : "Branch changes";
+  const reviewSectionTitle = toolCallSelection
+    ? "Tool call"
+    : selectedTurn
+      ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
+      : selectedCommitOid
+        ? `Commit ${selectedCommitOid.slice(0, 7)}`
+        : selectedGitScope === "unstaged"
+          ? "Working tree"
+          : "Branch changes";
   const selectedCheckpointRange =
     typeof selectedCheckpointTurnCount === "number"
       ? {
@@ -558,7 +584,7 @@ export default function DiffPanel({
   );
   const refreshBranchDiffPreview = branchDiffPreview.refresh;
   const canRefreshGitDiff =
-    isGitRepo && selectedTurnId === null && activeThread != null && activeCwd != null;
+    isGitRepo && !isPatchSelection && activeThread != null && activeCwd != null;
   const activeThreadRefreshKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}`
     : null;
@@ -593,7 +619,7 @@ export default function DiffPanel({
 
   const commitPreviewCwd = activeCwd;
   const commitDiffPreview = useEnvironmentQuery(
-    selectedCommitOid && activeThread && commitPreviewCwd
+    canReadFiles && selectedCommitOid && activeThread && commitPreviewCwd
       ? reviewEnvironment.commitDiffPreview({
           environmentId: activeThread.environmentId,
           input: {
@@ -611,7 +637,7 @@ export default function DiffPanel({
     (source) => source.kind === (selectedGitScope === "unstaged" ? "working-tree" : "branch-range"),
   );
   const showCommitList = shouldShowDiffCommitPane({
-    selectedTurnId,
+    isPatchSelection,
     selectedCommitOid,
     commitCount: branchCommits.length,
     showUncommitted,
@@ -659,20 +685,33 @@ export default function DiffPanel({
     ...(baseRefQuery.trim().length === 0 ? [AUTOMATIC_BASE_REF] : []),
     ...matchingBaseRefChoices.map(valueForBaseRefChoice),
   ];
-  const selectedPatch = selectedTurn ? activeCheckpointDiff.data?.diff : undefined;
-  const isLoadingSelectedPatch = selectedTurn
-    ? activeCheckpointDiff.isPending
-    : selectedGitPreview.isPending;
-  const selectedPatchError = selectedTurn ? activeCheckpointDiff.error : selectedGitPreview.error;
+  const toolCallPreview =
+    toolCallSelection && toolCallItem?.type === "file_change" ? toolCallDiff(toolCallItem) : null;
+  const selectedPatch = toolCallSelection
+    ? toolCallPreview?.patch
+    : selectedTurn
+      ? activeCheckpointDiff.data?.diff
+      : undefined;
+  const isLoadingSelectedPatch = toolCallSelection
+    ? toolCallDetail.isPending && toolCallDetail.data === null
+    : selectedTurn
+      ? activeCheckpointDiff.isPending
+      : selectedGitPreview.isPending;
+  const selectedPatchError = toolCallSelection
+    ? toolCallDetail.error
+    : selectedTurn
+      ? activeCheckpointDiff.error
+      : selectedGitPreview.error;
   const hasResolvedPatch = typeof selectedPatch === "string";
-  const hasNoNetChanges = selectedTurn
+  const hasNoNetChanges = isPatchSelection
     ? hasResolvedPatch && selectedPatch.trim().length === 0
     : !isLoadingSelectedPatch &&
       selectedPatchError == null &&
       (selectedGitSource?.manifest.length ?? 0) === 0;
-  const turnRenderablePatch = selectedTurn
+  const turnRenderablePatch = isPatchSelection
     ? getRenderablePatch(selectedPatch, `diff-panel:${resolvedTheme}`, {
         compactPartialHunkOffsets: false,
+        ...(toolCallSelection ? { ignoreWhitespace: diffIgnoreWhitespace } : {}),
       })
     : null;
   const renderableFiles =
@@ -684,19 +723,24 @@ export default function DiffPanel({
             sensitivity: "base",
           }),
         );
-  const treeFiles =
-    selectedTurnId === null
-      ? toGitDiffTreeFiles(selectedGitSource?.manifest ?? [])
-      : toTurnDiffTreeFiles(
-          renderableFiles.map((fileDiff) => ({
-            fileDiff,
-            filePath: resolveFileDiffPath(fileDiff),
-          })),
-        );
+  const allTreeFiles = !isPatchSelection
+    ? toGitDiffTreeFiles(selectedGitSource?.manifest ?? [])
+    : toTurnDiffTreeFiles(
+        renderableFiles.map((fileDiff) => ({
+          fileDiff,
+          filePath: resolveFileDiffPath(fileDiff),
+        })),
+      );
+  const testFileCount = allTreeFiles.filter((file) => isTestChangedFile(file.path)).length;
+  const requestedPath = treeFocus?.path ?? selectedFilePath;
+  // A file requested from outside the panel stays listed while tests are hidden.
+  const treeFiles = hideTestFiles
+    ? allTreeFiles.filter((file) => file.path === requestedPath || !isTestChangedFile(file.path))
+    : allTreeFiles;
   const treePaths = treeFiles.map((file) => file.path);
   const selectedPath = resolveDiffPanelSelectedPath({
     paths: treePaths,
-    requestedPath: treeFocus?.path ?? selectedFilePath,
+    requestedPath,
     previousPath: previousSelectedPath,
   });
   // The last shown file stays selected when the requested one leaves the list.
@@ -704,20 +748,28 @@ export default function DiffPanel({
     setPreviousSelectedPath(selectedPath);
   }
   const selectedGitFile =
-    selectedTurnId === null && selectedGitSource && selectedPath
+    !isPatchSelection && selectedGitSource && selectedPath
       ? selectedGitSource.manifest.find((file) => file.path === selectedPath)
       : undefined;
   const showBinaryGitFile = selectedGitFile?.binary === true;
   const displayedGitFile = gitFilePane.displayedFile;
   const gitRenderablePatch =
-    selectedTurnId !== null ||
+    isPatchSelection ||
     showBinaryGitFile ||
     displayedGitFile === null ||
     displayedGitFile.threadKey !== activeThreadRefreshKey ||
     displayedGitFile.sourceId !== selectedGitSource?.id
       ? null
       : displayedGitFile.renderablePatch;
-  const renderablePatch = selectedTurn ? turnRenderablePatch : gitRenderablePatch;
+  const renderablePatch = isPatchSelection ? turnRenderablePatch : gitRenderablePatch;
+  const recordedToolCallFileCount =
+    toolCallSelection && toolCallItem?.type === "file_change"
+      ? (toolCallItem.changes?.length ?? 0)
+      : 0;
+  const omittedToolCallFiles =
+    renderablePatch?.kind === "files"
+      ? Math.max(0, recordedToolCallFileCount - renderablePatch.files.length)
+      : 0;
   const previewCwd = selectedGitPreview.data?.cwd;
   const selectedGitFilePath = selectedGitFile?.path ?? null;
   const selectedGitFileOldPath = selectedGitFile?.oldPath ?? null;
@@ -734,7 +786,7 @@ export default function DiffPanel({
     : 0;
 
   const gitFileCacheKey =
-    selectedTurnId !== null ||
+    isPatchSelection ||
     environmentId === null ||
     previewCwd === undefined ||
     selectedGitSourceId === null ||
@@ -804,6 +856,7 @@ export default function DiffPanel({
     }
   }
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fetches the selected file patch and contents from the server and drops stale responses
   useEffect(() => {
     if (
       environmentId === null ||
@@ -919,7 +972,7 @@ export default function DiffPanel({
 
   const loadDiffFiles: FileDiffContentsLoader | undefined = (() => {
     if (
-      selectedTurnId !== null ||
+      isPatchSelection ||
       displayedGitFile === null ||
       selectedGitSource === undefined ||
       displayedGitFile.threadKey !== activeThreadRefreshKey ||
@@ -952,7 +1005,7 @@ export default function DiffPanel({
     };
   })();
   const codeViewFiles = (() => {
-    if (selectedTurnId === null) {
+    if (!isPatchSelection) {
       if (!gitRenderablePatch || gitRenderablePatch.kind !== "files") {
         return [];
       }
@@ -1009,12 +1062,12 @@ export default function DiffPanel({
       ? null
       : (codeViewFiles.find((file) => file.filePath === selectedPath) ?? null);
   const expandUnchanged =
-    selectedTurnId === null && loadDiffFiles != null
+    !isPatchSelection && loadDiffFiles != null
       ? true
       : shouldExpandUnchanged({
           canExpand: canExpandUnchanged({
             hasGitLoader: loadDiffFiles != null,
-            selectedTurnId,
+            isPatchSelection,
           }),
           focusedFileKey: focusedFile?.fileKey ?? null,
           collapsedFileKeys: EMPTY_COLLAPSED_DIFF_FILE_KEYS,
@@ -1044,10 +1097,9 @@ export default function DiffPanel({
     });
     codeViewRef.current?.scrollTo(hunkScrollTarget(fileDiff, fileKey, nextIndex));
   };
-  const diffLineStat =
-    selectedTurnId === null
-      ? sumManifestDiffStats(selectedGitSource?.manifest ?? [])
-      : getDiffLineStat(renderableFiles);
+  const diffLineStat = !isPatchSelection
+    ? sumManifestDiffStats(selectedGitSource?.manifest ?? [])
+    : getDiffLineStat(renderableFiles);
   const selectedDiffFileKey = focusedFile?.fileKey ?? null;
   const holdFileReveal = shouldHoldDiffFileReveal({
     selectedFileKey: selectedDiffFileKey,
@@ -1089,6 +1141,7 @@ export default function DiffPanel({
   const focusedFileKey = focusedFile?.fileKey ?? null;
   // Choosing the same file again bumps the tree focus request, which reveals it again.
   const treeFocusRequestId = treeFocus?.requestId ?? 0;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the code viewer to the focused file after its diff DOM hydrates
   useEffect(() => {
     if (focusedFileKey === null) return;
     return revealFocusedFile({ mountKey: codeViewMountKey, treeFocusRequestId });
@@ -1165,6 +1218,7 @@ export default function DiffPanel({
             render={<Button size="xs" variant="secondary" />}
             className="max-w-full"
             aria-label={`Diff scope: ${selectedScopeLabel}`}
+            data-workspace-focus-default
           >
             <span className="truncate">{selectedScopeLabel}</span>
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
@@ -1355,6 +1409,28 @@ export default function DiffPanel({
             </TooltipPopup>
           </Tooltip>
         )}
+        {testFileCount > 0 && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  aria-label="Hide test files"
+                  variant="ghost"
+                  size="sm"
+                  pressed={hideTestFiles}
+                  onPressedChange={(pressed) => setHideTestFiles(Boolean(pressed))}
+                />
+              }
+            >
+              <FlaskConicalOffIcon className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {hideTestFiles
+                ? `Show ${testFileCount} hidden test ${testFileCount === 1 ? "file" : "files"}`
+                : "Hide test files"}
+            </TooltipPopup>
+          </Tooltip>
+        )}
         {(treeFiles.length > 0 || showCommitList) && (
           <Tooltip>
             <TooltipTrigger
@@ -1446,7 +1522,7 @@ export default function DiffPanel({
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Select a thread to inspect turn diffs.
         </div>
-      ) : !isGitRepo ? (
+      ) : !isGitRepo && !toolCallSelection ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Turn diffs are unavailable because this project is not a git repository.
         </div>
@@ -1454,6 +1530,14 @@ export default function DiffPanel({
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           No completed turns yet.
         </div>
+      ) : !isPatchSelection && !canReadFiles ? (
+        fileAccess.isPending ? (
+          <DiffPanelLoadingState label="Checking file access..." />
+        ) : (
+          <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
+            {fileAccess.error ?? "This connection cannot read local diffs."}
+          </div>
+        )
       ) : (
         <>
           <div
@@ -1481,12 +1565,8 @@ export default function DiffPanel({
                         selectedCommitOid,
                         onSelectAllChanges: () => selectGitScope("branch"),
                         onSelectCommit: (oid) => {
-                          if (!routeThreadRef || !activeCwd) return;
-                          useDiffPanelStore.getState().selectCommit(routeThreadRef, {
-                            oid,
-                            cwd: activeCwd,
-                            branch: gitStatusQuery.data?.refName ?? null,
-                          });
+                          if (!routeThreadRef) return;
+                          useDiffPanelStore.getState().selectCommit(routeThreadRef, oid);
                         },
                         listIdentity: `${branchRangeSource?.diffHash ?? ""}:${branchRangeSource?.baseRef ?? ""}`,
                         timestampFormat: settings.timestampFormat,
@@ -1497,6 +1577,17 @@ export default function DiffPanel({
               />
             ) : null}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              {toolCallPreview?.truncated && (
+                <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
+                  This preview exceeds the size limit. Changes shown are incomplete.
+                </p>
+              )}
+              {omittedToolCallFiles > 0 && (
+                <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
+                  This tool call changed {recordedToolCallFileCount} files. The recorded patch omits{" "}
+                  {omittedToolCallFiles} of them.
+                </p>
+              )}
               {(selectedPatchError && !renderablePatch) || gitFilePane.fileError ? (
                 <div className="px-3">
                   {selectedPatchError && !renderablePatch && (
@@ -1511,20 +1602,41 @@ export default function DiffPanel({
                 <div className="flex h-full items-center justify-center px-3 py-2 text-xs text-muted-foreground/70">
                   <p>Cannot preview binary file.</p>
                 </div>
+              ) : !renderablePatch && toolCallPreview && toolCallPreview.content.length > 0 ? (
+                <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 text-xs">
+                  <p className="text-muted-foreground">
+                    The provider recorded file content without a diff.
+                  </p>
+                  {toolCallPreview.content.map(({ label, text }) => (
+                    <div key={label} className="space-y-1">
+                      <p className="text-muted-foreground">{label}</p>
+                      <pre
+                        className={cn(
+                          "overflow-auto font-mono text-2xs",
+                          wordWrap && "whitespace-pre-wrap wrap-break-word",
+                        )}
+                      >
+                        {text === "" ? "Empty content." : text}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
               ) : !renderablePatch ? (
                 isLoadingSelectedPatch || gitFilePane.loadingPath !== null ? (
                   <DiffPanelLoadingState
                     label={
-                      selectedTurn
-                        ? "Loading checkpoint diff..."
-                        : selectedCommitOid
-                          ? "Loading commit diff..."
-                          : selectedGitScope === "unstaged"
-                            ? "Loading working tree diff..."
-                            : "Loading branch diff..."
+                      toolCallSelection
+                        ? "Loading tool call diff..."
+                        : selectedTurn
+                          ? "Loading checkpoint diff..."
+                          : selectedCommitOid
+                            ? "Loading commit diff..."
+                            : selectedGitScope === "unstaged"
+                              ? "Loading working tree diff..."
+                              : "Loading branch diff..."
                     }
                   />
-                ) : selectedTurn || hasNoNetChanges ? (
+                ) : isPatchSelection || hasNoNetChanges ? (
                   <div className="flex h-full items-center justify-center px-3 py-2 text-xs text-muted-foreground/70">
                     <p>
                       {hasNoNetChanges
@@ -1564,6 +1676,25 @@ export default function DiffPanel({
                         openDiffFile(filePath);
                       }
                     }}
+                    onContextMenuCapture={(event) => {
+                      const composedPath = event.nativeEvent.composedPath?.() ?? [];
+                      const title = composedPath.find(
+                        (node): node is HTMLElement =>
+                          node instanceof HTMLElement && node.hasAttribute("data-title"),
+                      );
+                      const filePath = title?.textContent?.trim();
+                      if (!filePath) return;
+                      event.preventDefault();
+                      onFileContextMenu(
+                        {
+                          environmentId: activeThread?.environmentId ?? null,
+                          filePath,
+                          workspaceRoot: activeCwd,
+                          repositoryRoot: activeRepositoryRoot,
+                        },
+                        event,
+                      );
+                    }}
                   >
                     <AnnotatableCodeView
                       key={collapseScopeKey ?? reviewSectionId}
@@ -1576,6 +1707,11 @@ export default function DiffPanel({
                       sectionTitle={reviewSectionTitle}
                       composerDraftTarget={composerDraftTarget}
                       renderHeaderPrefix={() => null}
+                      renderHeaderFilenameSuffix={(fileDiff) => (
+                        <span data-diff-copy-path className="inline-flex">
+                          <DiffFilePathCopyButton filePath={resolveFileDiffPath(fileDiff)} />
+                        </span>
+                      )}
                       // Files never collapse in this panel, so a find match is always visible.
                       onRevealSearchMatch={() => {}}
                       unsafeCSSExtra={DIFF_PANEL_UNSAFE_CSS}

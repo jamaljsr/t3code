@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 
@@ -23,7 +23,6 @@ export function DiffCommitList(props: {
   readonly selectedCommitOid: string | null;
   readonly onSelectCommit: (oid: string) => void;
   readonly onSelectAllChanges: () => void;
-  readonly listIdentity: string;
   readonly timestampFormat: TimestampFormat;
   readonly onSelectUncommitted: () => void;
   readonly expandedOids?: ReadonlySet<string>;
@@ -37,20 +36,16 @@ export function DiffCommitList(props: {
     selectedCommitOid,
     onSelectCommit,
     onSelectAllChanges,
-    listIdentity,
     timestampFormat,
     onSelectUncommitted,
     expandedOids: expandedOidsProp,
   } = props;
   const [expandedOids, setExpandedOids] = useState<ReadonlySet<string>>(() => new Set());
-  useEffect(() => {
-    setExpandedOids(new Set());
-  }, [listIdentity]);
   const expanded = expandedOidsProp ?? expandedOids;
 
   if (
     !shouldShowDiffCommitPane({
-      selectedTurnId: null,
+      isPatchSelection: false,
       selectedCommitOid,
       commitCount: commits.length,
       showUncommitted,
@@ -70,7 +65,7 @@ export function DiffCommitList(props: {
           type="button"
           aria-current={workingTreeSelected ? "true" : undefined}
           className={cn(
-            "flex w-full items-center rounded-xl px-3 py-1 text-left text-2xs transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "flex w-full items-center rounded-xl px-3 py-1 text-left text-2xs transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
             workingTreeSelected && "bg-accent/60",
           )}
           onClick={onSelectUncommitted}
@@ -82,7 +77,7 @@ export function DiffCommitList(props: {
         type="button"
         aria-current={!workingTreeSelected && selectedCommitOid === null ? "true" : undefined}
         className={cn(
-          "flex w-full items-center rounded-xl px-3 py-1 text-left text-2xs transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "flex w-full items-center rounded-xl px-3 py-1 text-left text-2xs transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           !workingTreeSelected && selectedCommitOid === null && "bg-accent/60",
         )}
         onClick={onSelectAllChanges}
@@ -105,7 +100,7 @@ export function DiffCommitList(props: {
                   type="button"
                   aria-label={`${isExpanded ? "Collapse" : "Expand"} commit message: ${commit.subject}`}
                   aria-expanded={isExpanded}
-                  className="mt-1 ml-3 shrink-0 rounded-sm text-muted-foreground/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="mt-1 ml-3 shrink-0 rounded-sm text-muted-foreground/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   onClick={() => {
                     if (expandedOidsProp) return;
                     setExpandedOids((current) => toggleExpandedCommitOid(current, commit.oid));
@@ -122,7 +117,7 @@ export function DiffCommitList(props: {
               <button
                 type="button"
                 aria-current={selectedCommitOid === commit.oid ? "true" : undefined}
-                className="flex min-w-0 flex-1 rounded-xl py-1 pr-3 pl-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-w-0 flex-1 rounded-xl py-1 pr-3 pl-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 onClick={() => onSelectCommit(commit.oid)}
               >
                 <span className="min-w-0 flex-1">

@@ -1,15 +1,14 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId, RunId } from "@t3tools/contracts";
+import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ThreadId, RunId, TurnItemId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
-  resolveSelectedCommitOid,
+  resolveToolCallDiffTarget,
   selectThreadDiffPanelSelection,
   useDiffPanelSessionStore,
   useDiffPanelStore,
 } from "./diffPanelStore";
-
-const PREVIEW = { cwd: "/repo", commits: [{ oid: "aaa" }] };
 
 const THREAD_REF = scopeThreadRef(EnvironmentId.make("environment-1"), ThreadId.make("thread-1"));
 
@@ -25,14 +24,10 @@ describe("diffPanelStore", () => {
   it("returns from a commit to All Changes with the same comparison base", () => {
     const store = useDiffPanelStore.getState();
     store.selectBranchBaseRef(THREAD_REF, "origin/main");
-    store.selectCommit(THREAD_REF, { oid: "aaa", cwd: "/repo", branch: "feature" });
-    const selected = selectThreadDiffPanelSelection(
-      useDiffPanelStore.getState().byThreadKey,
-      THREAD_REF,
-    );
-    expect(resolveSelectedCommitOid(selected, "/repo", "feature", PREVIEW)).toBe("aaa");
-    expect(resolveSelectedCommitOid(selected, "/other", "feature", PREVIEW)).toBeNull();
-    expect(resolveSelectedCommitOid(selected, "/repo", "other", PREVIEW)).toBeNull();
+    store.selectCommit(THREAD_REF, "aaa");
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "commit", sha: "aaa", baseRef: "origin/main" });
     store.selectGitScope(THREAD_REF, "branch");
     expect(
       selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
@@ -41,99 +36,91 @@ describe("diffPanelStore", () => {
 
   it("clears commit selection for working tree, turns, and a new comparison base", () => {
     const store = useDiffPanelStore.getState();
-    const selectCommit = () =>
-      store.selectCommit(THREAD_REF, { oid: "aaa", cwd: "/repo", branch: "feature" });
-    const selectedOid = () =>
-      resolveSelectedCommitOid(
-        selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
-        "/repo",
-        "feature",
-        PREVIEW,
-      );
-    selectCommit();
+    const selection = () =>
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF);
+    store.selectCommit(THREAD_REF, "aaa");
     store.selectGitScope(THREAD_REF, "unstaged");
-    expect(selectedOid()).toBeNull();
-    selectCommit();
+    expect(selection()).toEqual({ kind: "unstaged" });
+    store.selectCommit(THREAD_REF, "aaa");
     store.selectTurn(THREAD_REF, RunId.make("turn-1"));
-    expect(selectedOid()).toBeNull();
-    selectCommit();
+    expect(selection().kind).toBe("turn");
+    store.selectCommit(THREAD_REF, "aaa");
     store.selectBranchBaseRef(THREAD_REF, "origin/develop");
-    expect(selectedOid()).toBeNull();
+    expect(selection()).toEqual({ kind: "branch", baseRef: "origin/develop" });
     const otherThread = scopeThreadRef(
       EnvironmentId.make("environment-2"),
       ThreadId.make("thread-1"),
     );
     expect(
-      resolveSelectedCommitOid(
-        selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, otherThread),
-        "/repo",
-        "feature",
-        PREVIEW,
-      ),
-    ).toBeNull();
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, otherThread),
+    ).toEqual({ kind: "unstaged" });
   });
 
-  it("does not request a saved commit before its repository list loads or after it disappears", () => {
-    useDiffPanelStore
-      .getState()
-      .selectCommit(THREAD_REF, { oid: "aaa", cwd: "/repo", branch: "feature" });
-    const selected = selectThreadDiffPanelSelection(
-      useDiffPanelStore.getState().byThreadKey,
-      THREAD_REF,
-    );
-    expect(resolveSelectedCommitOid(selected, "/repo", "feature", null)).toBeNull();
-    expect(
-      resolveSelectedCommitOid(selected, "/repo", "feature", {
-        cwd: "/other",
-        commits: [{ oid: "aaa" }],
-      }),
-    ).toBeNull();
-    expect(
-      resolveSelectedCommitOid(selected, "/repo", "feature", {
-        cwd: "/repo",
-        commits: [{ oid: "bbb" }],
-      }),
-    ).toBeNull();
-    expect(resolveSelectedCommitOid(selected, "/repo", "feature", PREVIEW)).toBe("aaa");
-  });
-
-  it("switches repositories without restoring a commit saved from the old fallback", () => {
-    const otherThread = scopeThreadRef(
-      EnvironmentId.make("environment-1"),
-      ThreadId.make("thread-2"),
-    );
+  it("keeps a tool call selection independent of checkpoints and allows returning to Git changes", () => {
+    const ref = { environmentId: EnvironmentId.make("env"), threadId: ThreadId.make("thread") };
+    const target = {
+      threadId: ThreadId.make("child"),
+      itemId: TurnItemId.make("edit"),
+      revision: "1",
+    };
     const store = useDiffPanelStore.getState();
-    store.selectCommit(THREAD_REF, { oid: "aaa", cwd: "/repo", branch: "feature" });
-    store.selectCommit(otherThread, { oid: "aaa", cwd: "/other", branch: "feature" });
-    const selection = selectThreadDiffPanelSelection(
-      useDiffPanelStore.getState().byThreadKey,
-      otherThread,
-    );
+    store.selectToolCall(ref, target);
+    store.reconcileTurnSelection(ref, []);
+    expect(useDiffPanelStore.getState().byThreadKey[scopedThreadKey(ref)]).toEqual({
+      kind: "tool-call",
+      ...target,
+    });
+    store.selectGitScope(ref, "branch");
+    expect(useDiffPanelStore.getState().byThreadKey[scopedThreadKey(ref)]).toEqual({
+      kind: "branch",
+      baseRef: null,
+    });
+  });
+
+  it("refreshes a live tool-call target when its source item completes", () => {
+    const target = {
+      threadId: ThreadId.make("child"),
+      itemId: TurnItemId.make("edit"),
+      revision: "live",
+    };
+    const now = DateTime.makeUnsafe("2026-10-28T00:00:00Z");
+    const row = {
+      position: 0,
+      visibility: "local" as const,
+      sourceThreadId: target.threadId,
+      sourceItemId: target.itemId,
+      item: {
+        id: target.itemId,
+        threadId: target.threadId,
+        runId: null,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 1,
+        status: "running" as const,
+        title: null,
+        startedAt: now,
+        completedAt: null,
+        updatedAt: now,
+        type: "file_change" as const,
+        fileName: "a.ts",
+      },
+    };
+    expect(resolveToolCallDiffTarget(target, [row])).toBe(target);
+    const completed = {
+      ...row,
+      item: { ...row.item, status: "completed" as const, completedAt: now },
+    };
+    expect(resolveToolCallDiffTarget(target, [completed])).toEqual({
+      ...target,
+      revision: DateTime.formatIso(now),
+    });
     expect(
-      resolveSelectedCommitOid(selection, "/other", "feature", {
-        cwd: "/other",
-        commits: [{ oid: "bbb" }],
-      }),
-    ).toBeNull();
-    store.selectCommit(otherThread, { oid: "bbb", cwd: "/other", branch: "feature" });
-    const nextSelection = selectThreadDiffPanelSelection(
-      useDiffPanelStore.getState().byThreadKey,
-      otherThread,
-    );
-    expect(
-      resolveSelectedCommitOid(nextSelection, "/other", "feature", {
-        cwd: "/other",
-        commits: [{ oid: "bbb" }],
-      }),
-    ).toBe("bbb");
-    expect(
-      resolveSelectedCommitOid(
-        selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
-        "/repo",
-        "feature",
-        PREVIEW,
-      ),
-    ).toBe("aaa");
+      resolveToolCallDiffTarget(target, [{ ...completed, sourceThreadId: ThreadId.make("other") }]),
+    ).toBe(target);
+    expect(resolveToolCallDiffTarget(target, [])).toBe(target);
   });
 
   it("defaults each thread to working tree changes without requiring git status", () => {

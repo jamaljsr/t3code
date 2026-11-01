@@ -162,9 +162,9 @@ describe("shouldRenderDiffHunkNav", () => {
 
 describe("canExpandUnchanged", () => {
   it("is true only for git scopes with a contents loader", () => {
-    expect(canExpandUnchanged({ hasGitLoader: true, selectedTurnId: null })).toBe(true);
-    expect(canExpandUnchanged({ hasGitLoader: false, selectedTurnId: null })).toBe(false);
-    expect(canExpandUnchanged({ hasGitLoader: true, selectedTurnId: "turn-1" })).toBe(false);
+    expect(canExpandUnchanged({ hasGitLoader: true, isPatchSelection: false })).toBe(true);
+    expect(canExpandUnchanged({ hasGitLoader: false, isPatchSelection: false })).toBe(false);
+    expect(canExpandUnchanged({ hasGitLoader: true, isPatchSelection: true })).toBe(false);
   });
 });
 
@@ -386,9 +386,7 @@ describe("revealFocusedDiffAfterHydration", () => {
 
     expect(waitResolvers).toHaveLength(1);
     waitResolvers[0]?.();
-    for (let i = 0; i < 20 && waitResolvers.length < 2; i++) {
-      await Promise.resolve();
-    }
+    await expect.poll(() => waitResolvers.length).toBe(2);
     expect(events).toEqual(["layout", "scroll"]);
     expect(waitResolvers).toHaveLength(2);
     fileDiff.isPartial = false;

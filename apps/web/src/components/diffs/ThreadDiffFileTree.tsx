@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useState } from "react";
 import { ChevronRightIcon, FolderClosedIcon, FolderIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
@@ -35,11 +35,8 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
     loadingPath,
     truncated = false,
   } = props;
-  const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
-  const directoryPathsKey = useMemo(
-    () => collectDirectoryPaths(treeNodes).join("\u0000"),
-    [treeNodes],
-  );
+  const treeNodes = buildTurnDiffTree(files);
+  const directoryPathsKey = collectDirectoryPaths(treeNodes).join("\u0000");
   const hasDirectoryNodes = directoryPathsKey.length > 0;
   const expansionStateKey = `${allDirectoriesExpanded ? "expanded" : "collapsed"}\u0000${directoryPathsKey}`;
   const [directoryExpansionState, setDirectoryExpansionState] = useState<{
@@ -54,21 +51,18 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
       ? directoryExpansionState.overrides
       : EMPTY_DIRECTORY_OVERRIDES;
 
-  const toggleDirectory = useCallback(
-    (pathValue: string) => {
-      setDirectoryExpansionState((current) => {
-        const nextOverrides = current.key === expansionStateKey ? current.overrides : {};
-        return {
-          key: expansionStateKey,
-          overrides: {
-            ...nextOverrides,
-            [pathValue]: !(nextOverrides[pathValue] ?? allDirectoriesExpanded),
-          },
-        };
-      });
-    },
-    [allDirectoriesExpanded, expansionStateKey],
-  );
+  const toggleDirectory = (pathValue: string) => {
+    setDirectoryExpansionState((current) => {
+      const nextOverrides = current.key === expansionStateKey ? current.overrides : {};
+      return {
+        key: expansionStateKey,
+        overrides: {
+          ...nextOverrides,
+          [pathValue]: !(nextOverrides[pathValue] ?? allDirectoriesExpanded),
+        },
+      };
+    });
+  };
 
   const renderTreeNode = (node: TurnDiffTreeNode, depth: number) => {
     const leftPadding = 8 + depth * 14;
@@ -79,7 +73,7 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
           <button
             type="button"
             data-scroll-anchor-ignore
-            className="group flex w-full items-center gap-1.5 rounded-xl py-1 pr-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+            className="group flex w-full items-center gap-1.5 rounded-xl py-1 pr-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             style={{ paddingLeft: `${leftPadding}px` }}
             onClick={() => toggleDirectory(node.path)}
           >
@@ -124,7 +118,7 @@ export const ThreadDiffFileTree = memo(function ThreadDiffFileTree(props: {
         aria-busy={loading || undefined}
         aria-current={selected ? "true" : undefined}
         className={cn(
-          "group flex w-full items-center gap-1.5 rounded-xl py-1 pr-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+          "group flex w-full items-center gap-1.5 rounded-xl py-1 pr-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           selected && "bg-accent/60",
         )}
         style={{ paddingLeft: `${leftPadding}px` }}

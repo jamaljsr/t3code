@@ -1,11 +1,11 @@
 export function shouldShowDiffCommitPane(input: {
-  readonly selectedTurnId: string | null;
+  readonly isPatchSelection: boolean;
   readonly selectedCommitOid?: string | null;
   readonly commitCount: number;
   readonly showUncommitted: boolean;
   readonly commitsError: boolean;
 }): boolean {
-  if (input.selectedTurnId !== null) return false;
+  if (input.isPatchSelection) return false;
   return (
     input.selectedCommitOid != null ||
     input.commitCount > 0 ||

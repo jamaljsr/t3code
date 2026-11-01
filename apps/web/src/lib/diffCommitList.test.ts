@@ -3,10 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { shouldShowDiffCommitPane, toggleExpandedCommitOid } from "./diffCommitList";
 
 describe("shouldShowDiffCommitPane", () => {
-  it("hides on turn diffs even when commits exist", () => {
+  it("hides on turn and tool call diffs even when commits exist", () => {
     expect(
       shouldShowDiffCommitPane({
-        selectedTurnId: "turn_1",
+        isPatchSelection: true,
         commitCount: 2,
         showUncommitted: true,
         commitsError: false,
@@ -17,7 +17,7 @@ describe("shouldShowDiffCommitPane", () => {
   it("keeps All Changes reachable when a selected commit has no files or disappears from the list", () => {
     expect(
       shouldShowDiffCommitPane({
-        selectedTurnId: null,
+        isPatchSelection: false,
         selectedCommitOid: "aaa",
         commitCount: 0,
         showUncommitted: false,
@@ -29,7 +29,7 @@ describe("shouldShowDiffCommitPane", () => {
   it("hides when the range is empty and the working tree is clean", () => {
     expect(
       shouldShowDiffCommitPane({
-        selectedTurnId: null,
+        isPatchSelection: false,
         commitCount: 0,
         showUncommitted: false,
         commitsError: false,
@@ -40,7 +40,7 @@ describe("shouldShowDiffCommitPane", () => {
   it("shows for uncommitted-only, commits, or a load error", () => {
     expect(
       shouldShowDiffCommitPane({
-        selectedTurnId: null,
+        isPatchSelection: false,
         commitCount: 0,
         showUncommitted: true,
         commitsError: false,
@@ -48,7 +48,7 @@ describe("shouldShowDiffCommitPane", () => {
     ).toBe(true);
     expect(
       shouldShowDiffCommitPane({
-        selectedTurnId: null,
+        isPatchSelection: false,
         commitCount: 1,
         showUncommitted: false,
         commitsError: false,
@@ -56,7 +56,7 @@ describe("shouldShowDiffCommitPane", () => {
     ).toBe(true);
     expect(
       shouldShowDiffCommitPane({
-        selectedTurnId: null,
+        isPatchSelection: false,
         commitCount: 0,
         showUncommitted: false,
         commitsError: true,

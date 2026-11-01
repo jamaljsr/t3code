@@ -9,9 +9,9 @@ export function DiffHunkScrollbarMarks({ marks }: DiffHunkScrollbarMarksProps) {
 
   return (
     <div className="diff-hunk-scrollbar" aria-hidden>
-      {marks.map((mark, index) => (
+      {marks.map((mark) => (
         <span
-          key={`${mark.kind}-${index}`}
+          key={`${mark.kind}:${mark.top}:${mark.height}`}
           className={`diff-hunk-scrollbar-mark diff-hunk-scrollbar-mark-${mark.kind}`}
           style={{ top: `${mark.top * 100}%`, height: `${mark.height * 100}%` }}
         />
