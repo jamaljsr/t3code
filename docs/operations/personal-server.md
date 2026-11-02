@@ -12,6 +12,7 @@
   - `~/.t3/runtime/service-state.json`, which records the active version
 - The runtime folder holds the fork's build in place of upstream's. It has the same layout as upstream's archive: the `t3` executable, `client/`, `resource-monitor/`, `node_modules/`, and the `.install-complete` sentinel. The service launcher refuses a runtime unless that sentinel contains its version.
 - The fork checkout is `~/dev/t3code` on the `personal` branch. `vp` is installed in `~/.vite-plus`.
+- The Linux build bundles `libatomic` into the archive with `patchelf`, so the server needs it installed: `sudo apt-get install -y patchelf`.
 - The server is not linked to T3 Connect. Local builds have no Clerk or relay configuration (the release job injects those), so a fork build cannot serve T3 Connect.
 
 ## Updating the server
