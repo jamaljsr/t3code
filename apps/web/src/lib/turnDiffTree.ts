@@ -76,14 +76,7 @@ function readStatus(kind: string): TurnDiffTreeFileNode["status"] {
 }
 
 function compactDirectoryNode(node: TurnDiffTreeDirectoryNode): TurnDiffTreeDirectoryNode {
-  const compactedChildren = node.children.map((child) =>
-    child.kind === "directory" ? compactDirectoryNode(child) : child,
-  );
-
-  let compactedNode: TurnDiffTreeDirectoryNode = {
-    ...node,
-    children: compactedChildren,
-  };
+  let compactedNode = node;
 
   while (compactedNode.children.length === 1 && compactedNode.children[0]?.kind === "directory") {
     const onlyChild = compactedNode.children[0];

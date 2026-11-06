@@ -22,7 +22,7 @@ export function DiffFileTransition({
   identity,
   ready,
   loadingPath,
-  disableInteraction = loadingPath !== null,
+  disableInteraction: disableInteractionProp,
   children,
 }: {
   identity: string;
@@ -31,6 +31,7 @@ export function DiffFileTransition({
   disableInteraction?: boolean;
   children: ReactNode;
 }) {
+  const disableInteraction = disableInteractionProp ?? loadingPath !== null;
   const [displayed, setDisplayed] = useState<{ identity: string; children: ReactNode } | null>(
     null,
   );
